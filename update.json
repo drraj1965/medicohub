@@ -1,6 +1,6 @@
 {
   "latest_version": "1.1.0",
-  "download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.1.0/medicohub.exe",
+  "download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.1.0/medicohub-windows-v1.1.0-portable.zip",
   "release_notes": [
     "WhatsApp-first delivery center with admin-managed sandbox activation phrase",
     "Doctor queue and thread cards now show clearer state, timestamps, and moderation flow",
