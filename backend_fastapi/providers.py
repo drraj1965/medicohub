@@ -97,6 +97,12 @@ class Repository(ABC):
     def update_otp_request(self, otp_request_id: str, updates: dict[str, Any]) -> dict[str, Any] | None: ...
 
     @abstractmethod
+    def get_notification_settings(self) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def upsert_notification_settings(self, settings: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
     def moderate_thread_message(
         self,
         question_id: str,
@@ -274,6 +280,16 @@ class LocalJsonRepository(Repository):
                 save_db(db)
                 return otp_request
         return None
+
+    def get_notification_settings(self) -> dict[str, Any] | None:
+        settings = self._db().get("notification_settings")
+        return settings if settings else None
+
+    def upsert_notification_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db["notification_settings"] = settings
+        save_db(db)
+        return settings
 
     def moderate_thread_message(
         self,
@@ -477,6 +493,16 @@ class FirestoreRepository(Repository):
         current.update(updates)
         ref.set(current)
         return current
+
+    def get_notification_settings(self) -> dict[str, Any] | None:
+        snap = self._collection("app_config").document("notification_settings").get()
+        if not snap.exists:
+            return None
+        return self._decode(snap.to_dict())
+
+    def upsert_notification_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        self._collection("app_config").document("notification_settings").set(settings)
+        return settings
 
     def moderate_thread_message(
         self,

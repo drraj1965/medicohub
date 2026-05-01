@@ -1,9 +1,9 @@
 {
-  "latest_version": "0.1.0",
-  "download_url": "https://github.com/your-org/medicohub/releases/latest/download/medicohub_patch.zip",
+  "latest_version": "1.1.0",
+  "download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.1.0/medicohub.exe",
   "release_notes": [
-    "Initial MedicoHub MVP scaffold",
-    "Compliance-first Q&A and second-opinion workflow",
-    "Flutter desktop/mobile/web shell with FastAPI backend"
+    "WhatsApp-first delivery center with admin-managed sandbox activation phrase",
+    "Doctor queue and thread cards now show clearer state, timestamps, and moderation flow",
+    "Email delivery remains preview-only while dedicated sender setup is pending"
   ]
 }

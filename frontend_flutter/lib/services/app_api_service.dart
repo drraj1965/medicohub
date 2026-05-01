@@ -161,6 +161,40 @@ class AppApiService {
         .toList();
   }
 
+  Future<NotificationSettings> fetchNotificationSettings() async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/notification-settings'),
+    );
+    _ensureSuccess(response, 'notification settings');
+    return NotificationSettings.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<NotificationSettings> updateNotificationSettings({
+    required String actorId,
+    required bool whatsAppActivationEnabled,
+    required String whatsAppActivationTarget,
+    required String whatsAppActivationPhrase,
+    required String emailStatusNote,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/notification-settings'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'whatsapp_activation_enabled': whatsAppActivationEnabled,
+        'whatsapp_activation_target': whatsAppActivationTarget,
+        'whatsapp_activation_phrase': whatsAppActivationPhrase,
+        'email_status_note': emailStatusNote,
+      }),
+    );
+    _ensureSuccess(response, 'update notification settings');
+    return NotificationSettings.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<UserProfile> upsertUserProfile({
     required String id,
     required String email,

@@ -261,6 +261,24 @@ class NotificationEvent(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class NotificationSettings(BaseModel):
+    id: str = "notification_settings"
+    whatsapp_activation_enabled: bool = True
+    whatsapp_activation_target: str = "+14155238886"
+    whatsapp_activation_phrase: str = "join cloud-tired"
+    email_status_note: str = "Email notifications are coming later."
+    updated_by: str = "system"
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class NotificationSettingsUpdate(BaseModel):
+    actor_id: str
+    whatsapp_activation_enabled: bool = True
+    whatsapp_activation_target: str
+    whatsapp_activation_phrase: str
+    email_status_note: str = "Email notifications are coming later."
+
+
 class QuestionRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("qst"))
     author_id: str

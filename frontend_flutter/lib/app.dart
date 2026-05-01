@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/app_models.dart';
@@ -106,6 +107,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   final TextEditingController _articleSummaryController =
       TextEditingController();
   final TextEditingController _articleBodyController = TextEditingController();
+  final TextEditingController _notificationPhraseController =
+      TextEditingController();
+  final TextEditingController _notificationTargetController =
+      TextEditingController();
+  final TextEditingController _emailStatusNoteController =
+      TextEditingController();
 
   bool _consentAccepted = false;
   bool _premium = false;
@@ -143,6 +150,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   List<EducationItem> _education = const [];
   List<BlogArticle> _blogArticles = const [];
   List<NotificationOutboxItem> _notifications = const [];
+  NotificationSettings? _notificationSettings;
   List<UploadedAttachment> _uploadedAttachments = const [];
   List<TitleTemplate> _titleTemplates = const [];
   List<DoctorDirectoryEntry> _doctors = const [];
@@ -150,6 +158,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   String? _authLookupMessage;
   String? _voiceStatus;
   String? _audioAttachmentPath;
+  SharedPreferences? _prefs;
   Timer? _emailLookupDebounce;
   late int _humanCheckLeft;
   late int _humanCheckRight;
@@ -179,6 +188,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     _articleTitleController.dispose();
     _articleSummaryController.dispose();
     _articleBodyController.dispose();
+    _notificationPhraseController.dispose();
+    _notificationTargetController.dispose();
+    _emailStatusNoteController.dispose();
     _humanCheckController.dispose();
     _emailLookupDebounce?.cancel();
     _voiceService.dispose();
@@ -193,7 +205,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _api.fetchBlogArticles(),
         _api.fetchTitleTemplates(),
         _api.fetchDoctors(),
+        _api.fetchNotificationSettings(),
         _updateService.checkForUpdates(),
+        SharedPreferences.getInstance(),
       ]);
       if (!mounted) {
         return;
@@ -206,9 +220,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _titleTemplates = results[3] as List<TitleTemplate>;
         _doctors = doctors;
         _selectedDoctorId = doctors.isEmpty ? null : doctors.first.id;
-        _updateInfo = results[5] as UpdateInfo?;
+        _notificationSettings = results[5] as NotificationSettings;
+        _updateInfo = results[6] as UpdateInfo?;
+        _prefs = results[7] as SharedPreferences;
         _loading = false;
       });
+      _notificationPhraseController.text =
+          _notificationSettings?.whatsAppActivationPhrase ?? '';
+      _notificationTargetController.text =
+          _notificationSettings?.whatsAppActivationTarget ?? '';
+      _emailStatusNoteController.text =
+          _notificationSettings?.emailStatusNote ?? '';
       _scheduleIdentityLookup();
     } catch (error) {
       if (!mounted) {
@@ -262,7 +284,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
       }
       return question.status == 'open' || _latestThreadMessageNeedsDoctor(question);
     }).toList()
-      ..sort((a, b) => b.responseCount.compareTo(a.responseCount));
+      ..sort((a, b) => _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
   }
 
   List<ForumQuestion> get _doctorHistoryQuestions {
@@ -275,8 +297,60 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         return false;
       }
       return !_doctorCurrentQuestions.any((current) => current.id == question.id);
-    }).toList();
+    }).toList()
+      ..sort((a, b) => _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
   }
+
+  List<NotificationOutboxItem> get _whatsAppNotifications {
+    final items = _notifications.where((item) => item.channel == 'whatsapp').toList();
+    items.sort(
+      (a, b) => _tryParseDate(b.createdAt).compareTo(_tryParseDate(a.createdAt)),
+    );
+    return items;
+  }
+
+  List<NotificationOutboxItem> get _emailComingLaterNotifications {
+    return _notifications
+        .where((item) => item.channel == 'email' && item.status != 'sent')
+        .toList();
+  }
+
+  bool get _canConfigureNotificationSettings =>
+      _activeUser?.isAdmin == true;
+
+  String? get _whatsAppActivationPreferenceKey {
+    final user = _activeUser;
+    if (user == null) {
+      return null;
+    }
+    return 'whatsapp_activation_until_${user.id}';
+  }
+
+  DateTime? get _whatsAppActivationCooldownUntil {
+    final prefs = _prefs;
+    final key = _whatsAppActivationPreferenceKey;
+    if (prefs == null || key == null) {
+      return null;
+    }
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(raw)?.toLocal();
+  }
+
+  bool get _isWhatsAppActivationCoolingDown {
+    final until = _whatsAppActivationCooldownUntil;
+    if (until == null) {
+      return false;
+    }
+    return DateTime.now().isBefore(until);
+  }
+
+  String get _whatsAppActivationStatusLabel =>
+      _isWhatsAppActivationCoolingDown
+          ? 'WhatsApp notifications activated'
+          : 'WhatsApp notifications to be activated';
 
   DoctorDirectoryEntry? get _selectedDoctor {
     final doctorId = _selectedDoctorId;
@@ -639,6 +713,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         ],
         _buildHeroCard(context),
         const SizedBox(height: 16),
+        _buildWhatsAppActivationBadge(context),
+        const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth > 900;
@@ -656,6 +732,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   'Visible threads: ${scopedQuestions.length}',
                   'Open threads: $pendingQuestions',
                   'Selected language: $_selectedLanguage',
+                  'WhatsApp: ${_isWhatsAppActivationCoolingDown ? 'Activated today' : 'Needs activation'}',
                 ],
               ),
             ];
@@ -668,7 +745,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   statLines: [
                     'Directed to you: ${_questions.where((item) => item.targetDoctorId == user.id).length}',
                     'Published articles: ${_blogArticles.where((item) => item.authorId == user.id).length}',
-                    'Notification previews: ${_notifications.length}',
+                    'WhatsApp alerts tracked: ${_whatsAppNotifications.length}',
+                    'WhatsApp: ${_isWhatsAppActivationCoolingDown ? 'Activated today' : 'Needs activation'}',
                   ],
                 ),
               );
@@ -731,7 +809,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
                 const Text(
-                  'Role-based accounts, doctor directory selection, targeted question threads, admin-managed title templates, file uploads, and voice-note capture are ready. Blog posts, comment moderation, email alerts, WhatsApp alerts, and translation delivery are the next product slices.',
+                  'Role-based accounts, doctor directory selection, targeted question threads, admin-managed title templates, file uploads, voice-note capture, and WhatsApp notifications are live. Email delivery is being kept in preview mode until a dedicated sender setup is ready.',
                 ),
                 if (_updateInfo != null) ...[
                   const SizedBox(height: 12),
@@ -848,6 +926,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _QuestionCard(
                     question: question,
+                    followUpLabel: _activeUser?.isDoctor == true
+                        ? 'Comment on Thread'
+                        : 'Add Follow-up',
                     onRespond: _canRespondToQuestion(question)
                         ? () => _openDoctorResponseDialog(question)
                         : null,
@@ -883,6 +964,29 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
               'Admins govern the doctor roster, doctors answer educational questions, and patients can ask structured questions addressed to a specific doctor with files and voice notes.',
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWhatsAppActivationBadge(BuildContext context) {
+    final activated = _isWhatsAppActivationCoolingDown;
+    final subtitle = activated
+        ? 'WhatsApp notifications are marked active on this device for today. Tap to review delivery settings.'
+        : 'WhatsApp notifications still need activation for today. Tap to open Delivery Channels in Settings.';
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          activated ? Icons.verified_user_outlined : Icons.notification_important_outlined,
+          color: activated
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.error,
+        ),
+        title: Text(_whatsAppActivationStatusLabel),
+        subtitle: Text(subtitle),
+        trailing: TextButton(
+          onPressed: _openNotificationSettingsTab,
+          child: Text(activated ? 'View' : 'Activate'),
         ),
       ),
     );
@@ -1105,6 +1209,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                                   targetDoctorId: '',
                                   responses: [],
                                   threadMessages: [],
+                                  createdAt: '',
+                                  updatedAt: '',
                                 ),
                               )
                               .isPublic ||
@@ -1268,6 +1374,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _QuestionCard(
                     question: question,
+                    followUpLabel: _activeUser?.isDoctor == true
+                        ? 'Comment on Thread'
+                        : 'Add Follow-up',
                     onEdit: _canEditQuestion(question)
                         ? () => _startEditingQuestion(question)
                         : null,
@@ -1332,6 +1441,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   'Next planned modules: blog posts, threaded comments, moderation tools, email notifications, WhatsApp notifications, and translation delivery.',
                 ),
                 const SizedBox(height: 8),
+                Text(
+                  'WhatsApp is the primary live notification channel today. Email delivery is intentionally held in preview mode until a dedicated sender domain is finalized.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const Text(
                   'Android testing: run the app on a phone with --dart-define=MEDICOHUB_API_BASE_URL=http://YOUR-LAN-IP:8012 so speech-to-text keyboards can be exercised on-device.',
                 ),
@@ -1355,6 +1471,108 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                   onPressed: _signOut,
                   child: const Text('Sign Out'),
                 ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Delivery Channels',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.chat_bubble_outline),
+                  title: const Text('WhatsApp notifications'),
+                  subtitle: Text(
+                    _notificationSettings == null
+                        ? 'Live now for question creation, answers, and thread updates.'
+                        : 'Live now for question creation, answers, and thread updates. If you are using the Twilio sandbox, send "${_notificationSettings!.whatsAppActivationPhrase}" to ${_notificationSettings!.whatsAppActivationTarget} once per day to activate notifications.',
+                  ),
+                  trailing: Chip(
+                    label: Text(
+                      _whatsAppNotifications.any((item) => item.status == 'sent')
+                          ? 'Active'
+                          : 'Configured',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isWhatsAppActivationCoolingDown
+                            ? null
+                            : _activateWhatsAppFor24Hours,
+                        icon: const Icon(Icons.chat_outlined),
+                        label: Text(
+                          _isWhatsAppActivationCoolingDown
+                              ? 'WhatsApp active for today'
+                              : 'Activate WhatsApp for 24 hours',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _isWhatsAppActivationCoolingDown
+                      ? 'This button will reactivate after local midnight on this device.'
+                      : 'Tapping the button opens WhatsApp with the current sandbox activation text already filled in. After pressing Send in WhatsApp, come back and confirm activation.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.email_outlined),
+                  title: const Text('Email notifications'),
+                  subtitle: Text(
+                    _notificationSettings?.emailStatusNote ??
+                        'Coming later once a dedicated sender domain is finalized.',
+                  ),
+                  trailing: const Chip(label: Text('Preview only')),
+                ),
+                if (_canConfigureNotificationSettings) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Admin controls',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notificationTargetController,
+                    decoration: const InputDecoration(
+                      labelText: 'WhatsApp activation target',
+                      helperText: 'Example: +14155238886',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notificationPhraseController,
+                    decoration: const InputDecoration(
+                      labelText: 'WhatsApp activation phrase',
+                      helperText: 'Example: join cloud-tired',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _emailStatusNoteController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Email status note',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _saveNotificationSettings,
+                    child: const Text('Save Delivery Settings'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1561,7 +1779,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             ),
           ),
         ],
-        if (_notifications.isNotEmpty) ...[
+        if (_whatsAppNotifications.isNotEmpty ||
+            _emailComingLaterNotifications.isNotEmpty) ...[
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -1569,27 +1788,37 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Notification Outbox',
+                  Text('WhatsApp Delivery Center',
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   const Text(
-                    'These are prepared email and WhatsApp notification previews. Real provider delivery can replace these deep links later.',
+                    'These are the live WhatsApp notifications MedicoHub is tracking right now for questions, answers, and thread updates.',
                   ),
+                  if (_emailComingLaterNotifications.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Email delivery is intentionally parked in preview mode for now (${_emailComingLaterNotifications.length} queued items).',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
-                  ..._notifications.take(8).map(
+                  ..._whatsAppNotifications.take(8).map(
                     (item) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('${item.channel.toUpperCase()} • ${item.subject}'),
+                        leading: const Icon(Icons.chat_bubble_outline),
+                        title: Text('WhatsApp • ${item.subject}'),
                         subtitle: Text(
-                          '${item.recipientName} • ${item.eventType} • ${item.status}',
+                          '${item.recipientName} • ${item.eventType} • ${_notificationStatusLabel(item)} • ${_formatTimestamp(item.createdAt)}',
                         ),
                         trailing: item.deepLink == null
                             ? null
                             : TextButton(
                                 onPressed: () => _openNotificationLink(item.deepLink!),
-                                child: const Text('Open'),
+                                child: const Text('Open Chat'),
                               ),
                       ),
                     ),
@@ -2102,6 +2331,61 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     return latest.actorRole == 'patient';
   }
 
+  DateTime _latestConversationMoment(ForumQuestion question) {
+    final timestamps = <DateTime>[
+      _tryParseDate(question.updatedAt),
+      _tryParseDate(question.createdAt),
+      ...question.threadMessages.map((message) => _tryParseDate(message.createdAt)),
+      ...question.responses.map((response) => _tryParseDate(response.createdAt)),
+    ]..sort();
+    return timestamps.isEmpty
+        ? DateTime.fromMillisecondsSinceEpoch(0)
+        : timestamps.last;
+  }
+
+  DateTime _tryParseDate(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    return DateTime.tryParse(raw)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _formatTimestamp(String? raw) {
+    final parsed = _tryParseDate(raw);
+    if (parsed.millisecondsSinceEpoch == 0) {
+      return 'just now';
+    }
+    final difference = DateTime.now().difference(parsed);
+    if (difference.inMinutes < 1) {
+      return 'just now';
+    }
+    if (difference.inHours < 1) {
+      return '${difference.inMinutes} min ago';
+    }
+    if (difference.inDays < 1) {
+      return '${difference.inHours} hr ago';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+    }
+    return '${parsed.day}/${parsed.month}/${parsed.year}';
+  }
+
+  String _notificationStatusLabel(NotificationOutboxItem item) {
+    if (item.channel == 'email' && item.status != 'sent') {
+      return 'Coming later';
+    }
+    switch (item.status) {
+      case 'sent':
+        return 'Delivered';
+      case 'preview_ready':
+        return 'Prepared';
+      default:
+        return item.status;
+    }
+  }
+
   Future<void> _openDoctorResponseDialog(ForumQuestion question) async {
     final keyPointsController = TextEditingController();
     final meaningController = TextEditingController();
@@ -2200,6 +2484,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                                   targetDoctorId: item.targetDoctorId,
                                   responses: [...item.responses, response],
                                   threadMessages: item.threadMessages,
+                                  createdAt: item.createdAt,
+                                  updatedAt: response.createdAt,
                                   authorName: item.authorName,
                                   targetDoctorName: item.targetDoctorName,
                                   authorEmail: item.authorEmail,
@@ -2312,6 +2598,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                                   targetDoctorId: item.targetDoctorId,
                                   responses: item.responses,
                                   threadMessages: [...item.threadMessages, message],
+                                  createdAt: item.createdAt,
+                                  updatedAt: message.createdAt,
                                   authorName: item.authorName,
                                   targetDoctorName: item.targetDoctorName,
                                   authorEmail: item.authorEmail,
@@ -2537,8 +2825,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                               setDialogState(() {
                                 dialogBusy = false;
                                 codeRequested = true;
-                                otpPreview = result.previewMessage ??
-                                    'OTP sent through ${result.channel}.';
+                                otpPreview = result.deliveryStatus == 'preview_only' &&
+                                        selectedChannel == 'email'
+                                    ? 'Email OTP is still in preview mode while MedicoHub completes a dedicated sender setup. Use password sign-in on desktop for now.'
+                                    : result.previewMessage ??
+                                        'OTP sent through ${result.channel}.';
                               });
                             } catch (error) {
                               if (!mounted) {
@@ -2720,6 +3011,120 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  void _openNotificationSettingsTab() {
+    setState(() {
+      _tabIndex = 4;
+      _voiceStatus = _isWhatsAppActivationCoolingDown
+          ? 'Review the Delivery Channels section for today’s WhatsApp status.'
+          : 'Open Delivery Channels and tap the WhatsApp activation button to enable notifications for today.';
+    });
+  }
+
+  Future<void> _activateWhatsAppFor24Hours() async {
+    final settings = _notificationSettings;
+    final prefs = _prefs;
+    final key = _whatsAppActivationPreferenceKey;
+    if (settings == null || prefs == null || key == null) {
+      setState(() {
+        _errorMessage = 'WhatsApp activation is not ready yet. Please refresh the app.';
+      });
+      return;
+    }
+    if (!settings.whatsAppActivationEnabled) {
+      setState(() {
+        _errorMessage = 'WhatsApp activation is currently disabled by the administrator.';
+      });
+      return;
+    }
+    if (_isWhatsAppActivationCoolingDown) {
+      final until = _whatsAppActivationCooldownUntil;
+      setState(() {
+        _voiceStatus = until == null
+            ? 'WhatsApp activation is already marked for today.'
+            : 'WhatsApp activation is already marked until ${until.hour.toString().padLeft(2, '0')}:${until.minute.toString().padLeft(2, '0')} tonight.';
+      });
+      return;
+    }
+
+    final activationLink = 'https://wa.me/'
+        '${settings.whatsAppActivationTarget.replaceAll(RegExp(r"[^0-9]"), "")}'
+        '?text=${Uri.encodeComponent(settings.whatsAppActivationPhrase)}';
+    await _openNotificationLink(activationLink);
+    if (!mounted) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('Confirm WhatsApp Activation'),
+              content: Text(
+                'WhatsApp opened with the activation message. After you press Send in WhatsApp, come back here and confirm so MedicoHub marks notifications active until midnight.\n\nCurrent phrase: ${settings.whatsAppActivationPhrase}',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Not yet'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text("I've sent it"),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    if (!confirmed) {
+      setState(() {
+        _voiceStatus =
+            'WhatsApp opened. After sending the activation message, return and use the badge or Delivery Channels section to confirm activation.';
+      });
+      return;
+    }
+
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    await prefs.setString(key, nextMidnight.toIso8601String());
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _voiceStatus =
+          'WhatsApp activation confirmed for this device until midnight.';
+    });
+  }
+
+  Future<void> _saveNotificationSettings() async {
+    final user = _activeUser;
+    if (user == null || !_canConfigureNotificationSettings) {
+      return;
+    }
+    try {
+      final updated = await _api.updateNotificationSettings(
+        actorId: user.id,
+        whatsAppActivationEnabled: true,
+        whatsAppActivationTarget: _notificationTargetController.text.trim(),
+        whatsAppActivationPhrase: _notificationPhraseController.text.trim(),
+        emailStatusNote: _emailStatusNoteController.text.trim(),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notificationSettings = updated;
+        _voiceStatus = 'Notification delivery settings updated.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'Could not update notification settings: $error';
+      });
+    }
+  }
+
   Future<void> _moderateThreadMessage(
     ForumQuestion question,
     ThreadMessage message,
@@ -2762,6 +3167,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             threadMessages: item.threadMessages
                 .map((existing) => existing.id == message.id ? moderated : existing)
                 .toList(),
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
             authorName: item.authorName,
             targetDoctorName: item.targetDoctorName,
             authorEmail: item.authorEmail,
@@ -3376,9 +3783,69 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   }
 }
 
+DateTime _safeQuestionDate(String? raw) {
+  if (raw == null || raw.isEmpty) {
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+  return DateTime.tryParse(raw)?.toLocal() ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+}
+
+DateTime _questionLatestMoment(ForumQuestion question) {
+  final timestamps = <DateTime>[
+    _safeQuestionDate(question.updatedAt),
+    _safeQuestionDate(question.createdAt),
+    ...question.threadMessages.map((message) => _safeQuestionDate(message.createdAt)),
+    ...question.responses.map((response) => _safeQuestionDate(response.createdAt)),
+  ]..sort();
+  return timestamps.isEmpty ? DateTime.fromMillisecondsSinceEpoch(0) : timestamps.last;
+}
+
+String _formatQuestionTimestamp(String? raw) {
+  final parsed = _safeQuestionDate(raw);
+  if (parsed.millisecondsSinceEpoch == 0) {
+    return 'just now';
+  }
+  final difference = DateTime.now().difference(parsed);
+  if (difference.inMinutes < 1) {
+    return 'just now';
+  }
+  if (difference.inHours < 1) {
+    return '${difference.inMinutes} min ago';
+  }
+  if (difference.inDays < 1) {
+    return '${difference.inHours} hr ago';
+  }
+  if (difference.inDays < 7) {
+    return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+  }
+  return '${parsed.day}/${parsed.month}/${parsed.year}';
+}
+
+bool _questionNeedsDoctorReply(ForumQuestion question) {
+  if (question.threadMessages.isEmpty) {
+    return question.status == 'open';
+  }
+  return question.threadMessages.last.actorRole == 'patient';
+}
+
+String _questionStateLabel(ForumQuestion question) {
+  if (_questionNeedsDoctorReply(question)) {
+    return 'Needs doctor reply';
+  }
+  if (question.responses.isNotEmpty) {
+    return 'Answered';
+  }
+  if (question.status == 'closed') {
+    return 'Closed';
+  }
+  return 'Conversation active';
+}
+
 class _QuestionCard extends StatelessWidget {
   const _QuestionCard({
     required this.question,
+    this.followUpLabel = 'Add Follow-up',
     this.onEdit,
     this.onTogglePublic,
     this.onDelete,
@@ -3389,6 +3856,7 @@ class _QuestionCard extends StatelessWidget {
   });
 
   final ForumQuestion question;
+  final String followUpLabel;
   final VoidCallback? onEdit;
   final VoidCallback? onTogglePublic;
   final VoidCallback? onDelete;
@@ -3400,6 +3868,10 @@ class _QuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hiddenMessageCount = question.threadMessages
+        .where((message) => message.moderationState == 'hidden')
+        .length;
+    final latestMoment = _questionLatestMoment(question);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -3419,6 +3891,22 @@ class _QuestionCard extends StatelessWidget {
                     backgroundColor:
                         Theme.of(context).colorScheme.primaryContainer,
                   ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text(_questionStateLabel(question))),
+                Chip(
+                  label: Text(question.isPublic ? 'Public thread' : 'Private thread'),
+                ),
+                Chip(
+                  label: Text('Updated ${_formatQuestionTimestamp(latestMoment.toIso8601String())}'),
+                ),
+                if (hiddenMessageCount > 0)
+                  Chip(label: Text('$hiddenMessageCount hidden')),
               ],
             ),
             const SizedBox(height: 8),
@@ -3464,9 +3952,19 @@ class _QuestionCard extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              '${message.actorName} • ${message.actorRole}',
-                              style: Theme.of(context).textTheme.labelLarge,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${message.actorName} • ${message.actorRole}',
+                                  style: Theme.of(context).textTheme.labelLarge,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _formatQuestionTimestamp(message.createdAt),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
                             ),
                           ),
                           if (canModerateMessage?.call(message) == true &&
@@ -3487,6 +3985,16 @@ class _QuestionCard extends StatelessWidget {
                                 ),
                               ],
                             ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Chip(label: Text(message.messageMode == 'voice' ? 'Voice note' : 'Text')),
+                          if (message.attachmentIds.isNotEmpty)
+                            Chip(label: Text('${message.attachmentIds.length} attachment${message.attachmentIds.length == 1 ? '' : 's'}')),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -3516,6 +4024,11 @@ class _QuestionCard extends StatelessWidget {
                       Text(
                         'Doctor response • ${response.responseMode}',
                         style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatQuestionTimestamp(response.createdAt),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -3554,7 +4067,7 @@ class _QuestionCard extends StatelessWidget {
                   if (onAddFollowUp != null)
                     OutlinedButton(
                       onPressed: onAddFollowUp,
-                      child: const Text('Add Follow-up'),
+                      child: Text(followUpLabel),
                     ),
                   if (onEdit != null)
                     OutlinedButton(

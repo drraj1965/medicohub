@@ -8,7 +8,7 @@ class UpdateService {
   UpdateService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
-  static const currentVersion = '0.1.0';
+  static const currentVersion = '1.1.0';
   static const updateUrl =
       'https://raw.githubusercontent.com/your-org/medicohub/main/update.json';
 

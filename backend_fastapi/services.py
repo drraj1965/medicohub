@@ -21,6 +21,8 @@ try:
         DoctorResponseRecord,
         EducationItem,
         NotificationEvent,
+        NotificationSettings,
+        NotificationSettingsUpdate,
         OtpRequestInput,
         OtpRequestRecord,
         OtpVerifyInput,
@@ -56,6 +58,8 @@ except ImportError:
         DoctorResponseRecord,
         EducationItem,
         NotificationEvent,
+        NotificationSettings,
+        NotificationSettingsUpdate,
         OtpRequestInput,
         OtpRequestRecord,
         OtpVerifyInput,
@@ -160,16 +164,39 @@ def _is_expired(iso_timestamp: str | None) -> bool:
     return utc_now().isoformat() > iso_timestamp
 
 
-def _send_email_otp(destination: str, subject: str, body: str) -> bool:
+def _send_email_message(destination: str, subject: str, body: str) -> bool:
+    sender_email = (
+        settings.sendgrid_sender_email
+        or settings.smtp_sender_email
+        or settings.smtp_username
+    )
+    if settings.sendgrid_api_key and sender_email:
+        response = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={
+                "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "personalizations": [{"to": [{"email": destination}]}],
+                "from": {"email": sender_email},
+                "subject": subject,
+                "content": [{"type": "text/plain", "value": body}],
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        return True
+
     if not (
         settings.smtp_host
         and settings.smtp_username
         and settings.smtp_password
-        and settings.smtp_sender_email
+        and sender_email
     ):
         return False
     message = EmailMessage()
-    message["From"] = settings.smtp_sender_email
+    message["From"] = sender_email
     message["To"] = destination
     message["Subject"] = subject
     message.set_content(body)
@@ -179,6 +206,10 @@ def _send_email_otp(destination: str, subject: str, body: str) -> bool:
         server.login(settings.smtp_username, settings.smtp_password)
         server.send_message(message)
     return True
+
+
+def _send_email_otp(destination: str, subject: str, body: str) -> bool:
+    return _send_email_message(destination, subject, body)
 
 
 def _send_sms_otp(destination: str, body: str) -> bool:
@@ -194,6 +225,33 @@ def _send_sms_otp(destination: str, body: str) -> bool:
         data={
             "From": settings.twilio_from_phone,
             "To": destination,
+            "Body": body,
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+
+def _send_whatsapp_message(destination: str, body: str) -> bool:
+    if not (
+        settings.twilio_account_sid
+        and settings.twilio_auth_token
+        and settings.twilio_whatsapp_number
+    ):
+        return False
+    from_number = settings.twilio_whatsapp_number
+    if not from_number.startswith("whatsapp:"):
+        from_number = f"whatsapp:{from_number}"
+    to_number = destination
+    if not to_number.startswith("whatsapp:"):
+        to_number = f"whatsapp:{destination}"
+    response = requests.post(
+        f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}/Messages.json",
+        auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+        data={
+            "From": from_number,
+            "To": to_number,
             "Body": body,
         },
         timeout=20,
@@ -241,6 +299,11 @@ def _queue_notification_pair(
     recipient_phone = recipient.get("phone_number")
     recipient_name = recipient.get("display_name", "MedicoHub user")
     if recipient_email:
+        email_sent = False
+        try:
+            email_sent = _send_email_message(recipient_email, subject, body)
+        except Exception:
+            email_sent = False
         repository.create_notification(
             NotificationEvent(
                 event_type=event_type,  # type: ignore[arg-type]
@@ -251,9 +314,15 @@ def _queue_notification_pair(
                 subject=subject,
                 body=body,
                 deep_link=_mailto_link(to_email=recipient_email, subject=subject, body=body),
+                status="sent" if email_sent else "preview_ready",
             ).model_dump(mode="json")
         )
     if recipient_phone:
+        whatsapp_sent = False
+        try:
+            whatsapp_sent = _send_whatsapp_message(recipient_phone, body)
+        except Exception:
+            whatsapp_sent = False
         repository.create_notification(
             NotificationEvent(
                 event_type=event_type,  # type: ignore[arg-type]
@@ -264,8 +333,45 @@ def _queue_notification_pair(
                 subject=subject,
                 body=body,
                 deep_link=_whatsapp_link(phone_number=recipient_phone, body=body),
+                status="sent" if whatsapp_sent else "preview_ready",
             ).model_dump(mode="json")
         )
+
+
+def get_notification_settings() -> dict:
+    existing = repository.get_notification_settings()
+    if existing:
+        return existing
+    default_settings = NotificationSettings(
+        whatsapp_activation_target=settings.twilio_whatsapp_number or "+14155238886",
+        updated_by="system",
+    ).model_dump(mode="json")
+    repository.upsert_notification_settings(default_settings)
+    return default_settings
+
+
+def update_notification_settings(payload: NotificationSettingsUpdate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can update notification settings.")
+
+    normalized_target = payload.whatsapp_activation_target.strip()
+    if normalized_target and not normalized_target.startswith("+"):
+        normalized_target = f"+{normalized_target}"
+
+    updated = NotificationSettings(
+        whatsapp_activation_enabled=payload.whatsapp_activation_enabled,
+        whatsapp_activation_target=normalized_target,
+        whatsapp_activation_phrase=payload.whatsapp_activation_phrase.strip(),
+        email_status_note=payload.email_status_note.strip() or "Email notifications are coming later.",
+        updated_by=payload.actor_id,
+        updated_at=utc_now(),
+    ).model_dump(mode="json")
+    repository.upsert_notification_settings(updated)
+    emit_audit("notification_settings", updated["id"], "updated", payload.actor_id, updated)
+    return updated
 
 
 def _normalize_question(question: dict) -> dict:
@@ -442,6 +548,8 @@ def seed_if_needed() -> None:
                 ).model_dump(mode="json")
             )
 
+    repository.upsert_notification_settings(get_notification_settings())
+
 
 def emit_audit(entity_type: str, entity_id: str, action: str, actor_id: str, payload: dict) -> None:
     append_audit(
@@ -479,14 +587,19 @@ def request_otp(payload: OtpRequestInput) -> dict:
         f"Your MedicoHub OTP is {code}. It expires in {settings.otp_code_ttl_minutes} minutes."
     )
     sent = False
-    if payload.channel == "email":
-        sent = _send_email_otp(
-            payload.destination,
-            "MedicoHub OTP",
-            preview_message,
-        )
-    else:
-        sent = _send_sms_otp(payload.destination, preview_message)
+    delivery_error = None
+    try:
+        if payload.channel == "email":
+            sent = _send_email_otp(
+                payload.destination,
+                "MedicoHub OTP",
+                preview_message,
+            )
+        else:
+            sent = _send_sms_otp(payload.destination, preview_message)
+    except Exception as exc:
+        delivery_error = str(exc)
+        sent = False
 
     otp_request = OtpRequestRecord(
         destination=payload.destination,
@@ -505,6 +618,7 @@ def request_otp(payload: OtpRequestInput) -> dict:
         "destination_hint": payload.destination if not sent else "***",
         "preview_message": None if sent else preview_message,
         "expires_at": otp_request["expires_at"],
+        "delivery_error": delivery_error,
     }
 
 

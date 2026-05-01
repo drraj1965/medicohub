@@ -147,6 +147,8 @@ class ForumQuestion {
     required this.targetDoctorId,
     required this.responses,
     required this.threadMessages,
+    required this.createdAt,
+    required this.updatedAt,
     this.authorName,
     this.targetDoctorName,
     this.authorEmail,
@@ -169,6 +171,8 @@ class ForumQuestion {
   final String authorId;
   final String targetDoctorId;
   final List<DoctorResponse> responses;
+  final String createdAt;
+  final String updatedAt;
   final String? authorName;
   final String? targetDoctorName;
   final String? authorEmail;
@@ -202,6 +206,8 @@ class ForumQuestion {
       threadMessages: threadMessages
           .map((item) => ThreadMessage.fromJson(item as Map<String, dynamic>))
           .toList(),
+      createdAt: json['created_at'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
       authorName: json['author_name'] as String?,
       targetDoctorName: json['target_doctor_name'] as String?,
       authorEmail: json['author_email'] as String?,
@@ -263,6 +269,7 @@ class OtpRequestResult {
     required this.destinationHint,
     required this.expiresAt,
     this.previewMessage,
+    this.deliveryError,
   });
 
   final String otpRequestId;
@@ -271,6 +278,7 @@ class OtpRequestResult {
   final String destinationHint;
   final String expiresAt;
   final String? previewMessage;
+  final String? deliveryError;
 
   factory OtpRequestResult.fromJson(Map<String, dynamic> json) {
     return OtpRequestResult(
@@ -280,6 +288,7 @@ class OtpRequestResult {
       destinationHint: json['destination_hint'] as String? ?? '',
       expiresAt: json['expires_at'] as String? ?? '',
       previewMessage: json['preview_message'] as String?,
+      deliveryError: json['delivery_error'] as String?,
     );
   }
 }
@@ -450,6 +459,42 @@ class NotificationOutboxItem {
       deepLink: json['deep_link'] as String?,
       status: json['status'] as String? ?? 'preview_ready',
       createdAt: json['created_at'] as String? ?? '',
+    );
+  }
+}
+
+class NotificationSettings {
+  const NotificationSettings({
+    required this.id,
+    required this.whatsAppActivationEnabled,
+    required this.whatsAppActivationTarget,
+    required this.whatsAppActivationPhrase,
+    required this.emailStatusNote,
+    required this.updatedBy,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final bool whatsAppActivationEnabled;
+  final String whatsAppActivationTarget;
+  final String whatsAppActivationPhrase;
+  final String emailStatusNote;
+  final String updatedBy;
+  final String updatedAt;
+
+  factory NotificationSettings.fromJson(Map<String, dynamic> json) {
+    return NotificationSettings(
+      id: json['id'] as String? ?? 'notification_settings',
+      whatsAppActivationEnabled:
+          json['whatsapp_activation_enabled'] as bool? ?? true,
+      whatsAppActivationTarget:
+          json['whatsapp_activation_target'] as String? ?? '+14155238886',
+      whatsAppActivationPhrase:
+          json['whatsapp_activation_phrase'] as String? ?? 'join cloud-tired',
+      emailStatusNote: json['email_status_note'] as String? ??
+          'Email notifications are coming later.',
+      updatedBy: json['updated_by'] as String? ?? 'system',
+      updatedAt: json['updated_at'] as String? ?? '',
     );
   }
 }

@@ -11,6 +11,7 @@ try:
         BlogArticleCreate,
         DoctorInviteCreate,
         DoctorResponseInput,
+        NotificationSettingsUpdate,
         OtpRequestInput,
         OtpVerifyInput,
         PaymentIntentRequest,
@@ -32,6 +33,7 @@ try:
         invite_doctor,
         create_payment_intent,
         create_question,
+        get_notification_settings,
         create_title_template,
         get_user_profile,
         list_education,
@@ -48,6 +50,7 @@ try:
         revoke_attachment,
         verify_otp,
         seed_if_needed,
+        update_notification_settings,
         update_question,
         upsert_user_profile,
         upload_attachment_file,
@@ -61,6 +64,7 @@ except ImportError:
         BlogArticleCreate,
         DoctorInviteCreate,
         DoctorResponseInput,
+        NotificationSettingsUpdate,
         OtpRequestInput,
         OtpVerifyInput,
         PaymentIntentRequest,
@@ -82,6 +86,7 @@ except ImportError:
         invite_doctor,
         create_payment_intent,
         create_question,
+        get_notification_settings,
         create_title_template,
         get_user_profile,
         list_education,
@@ -98,6 +103,7 @@ except ImportError:
         revoke_attachment,
         verify_otp,
         seed_if_needed,
+        update_notification_settings,
         update_question,
         upsert_user_profile,
         upload_attachment_file,
@@ -105,7 +111,7 @@ except ImportError:
     from storage import read_audit  # type: ignore
 
 
-app = FastAPI(title="MedicoHub Backend", version="0.1.0")
+app = FastAPI(title="MedicoHub Backend", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -254,6 +260,16 @@ def publish_blog_article(payload: BlogArticleCreate) -> dict:
 @app.get("/notifications/outbox")
 def notification_outbox(user_id: str | None = None) -> list[dict]:
     return list_notifications(user_id=user_id)
+
+
+@app.get("/notification-settings")
+def notification_settings() -> dict:
+    return get_notification_settings()
+
+
+@app.post("/notification-settings")
+def save_notification_settings(payload: NotificationSettingsUpdate) -> dict:
+    return update_notification_settings(payload)
 
 
 @app.get("/education/library")

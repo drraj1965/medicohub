@@ -25,6 +25,7 @@ def ensure_data_files() -> None:
                     "blog_articles": [],
                     "notifications": [],
                     "otp_requests": [],
+                    "notification_settings": {},
                 },
                 indent=2,
             ),
@@ -48,9 +49,10 @@ def load_db() -> dict[str, Any]:
         "blog_articles",
         "notifications",
         "otp_requests",
+        "notification_settings",
     ]:
         if key not in db:
-            db[key] = []
+            db[key] = {} if key == "notification_settings" else []
             changed = True
     if changed:
         save_db(db)
