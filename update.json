@@ -1,0 +1,9 @@
+{
+  "latest_version": "0.1.0",
+  "download_url": "https://github.com/your-org/medicohub/releases/latest/download/medicohub_patch.zip",
+  "release_notes": [
+    "Initial MedicoHub MVP scaffold",
+    "Compliance-first Q&A and second-opinion workflow",
+    "Flutter desktop/mobile/web shell with FastAPI backend"
+  ]
+}

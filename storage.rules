@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // MedicoHub uploads are handled by the backend service account and
+    // downloads are exposed through backend-issued signed URLs only.
+    // Direct client access stays blocked for PHI safety.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
