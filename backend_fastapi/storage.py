@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
-DATA_DIR = Path(__file__).parent / "data"
+if getattr(sys, "frozen", False):
+    DATA_DIR = Path(sys.executable).resolve().parent / "backend_data"
+else:
+    DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = DATA_DIR / "db.json"
 AUDIT_PATH = DATA_DIR / "audit.log.jsonl"
 

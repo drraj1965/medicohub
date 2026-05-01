@@ -13,3 +13,5 @@ frontend_flutter/lib/firebase_options.dart
 frontend_flutter/android/app/google-services.json
 frontend_flutter/ios/Runner/GoogleService-Info.plist
 *.log
+artifacts/
+backend_data/

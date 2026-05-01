@@ -199,6 +199,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
 
   Future<void> _bootstrap() async {
     try {
+      await _ensureBundledBackendForWindows();
       final results = await Future.wait([
         _api.fetchQuestions(),
         _api.fetchEducation(),
@@ -240,6 +241,41 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _loading = false;
         _errorMessage = error.toString();
       });
+    }
+  }
+
+  Future<void> _ensureBundledBackendForWindows() async {
+    if (!Platform.isWindows) {
+      return;
+    }
+    if (await _api.checkHealth()) {
+      return;
+    }
+
+    final executableDir = File(Platform.resolvedExecutable).parent;
+    final backendExe = File(
+      '${executableDir.path}${Platform.pathSeparator}medicohub_backend.exe',
+    );
+    if (!await backendExe.exists()) {
+      return;
+    }
+
+    try {
+      await Process.start(
+        backendExe.path,
+        const [],
+        mode: ProcessStartMode.detached,
+        runInShell: false,
+      );
+    } catch (_) {
+      return;
+    }
+
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (await _api.checkHealth()) {
+        return;
+      }
     }
   }
 

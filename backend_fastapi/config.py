@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -8,7 +9,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 

@@ -13,6 +13,8 @@ class AppApiService {
   final http.Client _client;
   static final String _baseUrl = _resolveBaseUrl();
 
+  String get baseUrl => _baseUrl;
+
   static String _resolveBaseUrl() {
     const configured = String.fromEnvironment('MEDICOHUB_API_BASE_URL');
     if (configured.isNotEmpty) {
@@ -34,6 +36,17 @@ class AppApiService {
     return data
         .map((item) => ForumQuestion.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<bool> checkHealth() async {
+    try {
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/'))
+          .timeout(const Duration(seconds: 2));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<EducationItem>> fetchEducation() async {
