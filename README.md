@@ -48,6 +48,14 @@ doctor_forum_app/
   - a rebuild with your laptop LAN URL via `-ApiBaseUrl "http://YOUR_LAPTOP_IP:8012"`
 - Truly standalone external testing for friends will require a publicly hosted backend before broader promotion.
 
+## Public deployment
+
+The next milestone after local Windows/USB testing is a public backend deployment so Android and later iOS no longer depend on your laptop.
+
+- Render is the recommended first public host for the FastAPI backend.
+- The repository now includes [render.yaml](C:/Users/drpha/Documents/Aster/doctor_forum_app/render.yaml) for that setup.
+- See the deployment runbook in [docs/public-deployment.md](C:/Users/drpha/Documents/Aster/doctor_forum_app/docs/public-deployment.md).
+
 ## Default local endpoints
 
 - Backend health: `http://127.0.0.1:8012/`

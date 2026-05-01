@@ -1,7 +1,7 @@
 param(
   [int]$Port = 8012,
   [string]$BindHost = "",
-  [switch]$Reload = $true
+  [switch]$Reload
 )
 
 $ErrorActionPreference = "Stop"
