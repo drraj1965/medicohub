@@ -85,8 +85,34 @@ except ImportError:
     from storage import append_audit  # type: ignore
 
 
-repository = get_repository()
-file_storage = get_file_storage_provider()
+class _LazyRepository:
+    def __init__(self) -> None:
+        self._instance = None
+
+    def _get(self):
+        if self._instance is None:
+            self._instance = get_repository()
+        return self._instance
+
+    def __getattr__(self, name: str):
+        return getattr(self._get(), name)
+
+
+class _LazyFileStorage:
+    def __init__(self) -> None:
+        self._instance = None
+
+    def _get(self):
+        if self._instance is None:
+            self._instance = get_file_storage_provider()
+        return self._instance
+
+    def __getattr__(self, name: str):
+        return getattr(self._get(), name)
+
+
+repository = _LazyRepository()
+file_storage = _LazyFileStorage()
 pdf_ingestion = PdfIngestionService()
 settings = get_settings()
 
@@ -549,6 +575,10 @@ def seed_if_needed() -> None:
             )
 
     repository.upsert_notification_settings(get_notification_settings())
+
+
+def should_seed_demo_data() -> bool:
+    return settings.app_env.strip().lower() != "production"
 
 
 def emit_audit(entity_type: str, entity_id: str, action: str, actor_id: str, payload: dict) -> None:

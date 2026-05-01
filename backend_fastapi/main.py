@@ -50,6 +50,7 @@ try:
         revoke_attachment,
         verify_otp,
         seed_if_needed,
+        should_seed_demo_data,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -103,6 +104,7 @@ except ImportError:
         revoke_attachment,
         verify_otp,
         seed_if_needed,
+        should_seed_demo_data,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -120,7 +122,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-seed_if_needed()
+if should_seed_demo_data():
+    seed_if_needed()
 
 
 @app.get("/")
