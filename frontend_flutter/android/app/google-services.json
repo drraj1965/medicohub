@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "630548785812",
+    "project_id": "mediconverse",
+    "storage_bucket": "mediconverse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:630548785812:android:532b3407abd7b9e888a281",
+        "android_client_info": {
+          "package_name": "com.aster.medichub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5YuC3ZRmPgV-89kXM9Zua7deGt3Mr2lk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

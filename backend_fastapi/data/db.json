@@ -1,0 +1,89 @@
+{
+  "users": [
+    {
+      "id": "usr_3f84e32e97c8",
+      "email": "patient@test.com",
+      "password": "Passw0rd!",
+      "display_name": "Test Patient",
+      "role": "patient",
+      "verified": false,
+      "languages": [
+        "English"
+      ],
+      "consent": {
+        "accepted": true,
+        "accepted_at": "2026-04-28T08:42:36.052579Z",
+        "disclaimer": "This platform does not provide diagnosis or prescriptions. For emergencies, contact local emergency services."
+      },
+      "created_at": "2026-04-28T08:42:36.052579Z"
+    },
+    {
+      "id": "usr_9cfc105c1d66",
+      "email": "doctor@test.com",
+      "password": "Passw0rd!",
+      "display_name": "Dr. Test Doctor",
+      "role": "doctor",
+      "verified": true,
+      "languages": [
+        "English",
+        "Arabic"
+      ],
+      "consent": {
+        "accepted": true,
+        "accepted_at": "2026-04-28T08:42:36.052579Z",
+        "disclaimer": "This platform does not provide diagnosis or prescriptions. For emergencies, contact local emergency services."
+      },
+      "created_at": "2026-04-28T08:42:36.052579Z"
+    }
+  ],
+  "questions": [
+    {
+      "id": "qst_6d5bfc6bfada",
+      "author_id": "usr_3f84e32e97c8",
+      "type": "forum",
+      "title": "How should I organize MRI reports before a neurology review?",
+      "body": "I have scans from two clinics and want to ask a clearer question.",
+      "tags": [
+        "Neurology",
+        "General health"
+      ],
+      "language": "English",
+      "symptoms_summary": null,
+      "current_diagnosis_text": null,
+      "premium": false,
+      "payment_status": "not_required",
+      "status": "open",
+      "bookmark_count": 0,
+      "upvote_count": 0,
+      "attachment_ids": [],
+      "responses": [],
+      "created_at": "2026-04-28T08:42:36.052579Z",
+      "updated_at": "2026-04-28T08:42:36.052579Z",
+      "ai_summary": "Open forum request tagged Neurology, General health."
+    }
+  ],
+  "attachments": [],
+  "education": [
+    {
+      "id": "edu_0fc103712605",
+      "title": "Understanding Migraine Red Flags",
+      "category": "Neurology",
+      "type": "article",
+      "summary": "Patient-friendly overview of warning signs worth discussing with your doctor.",
+      "language": "English",
+      "duration_minutes": 5,
+      "url": "https://example.com/education/migraine-red-flags"
+    },
+    {
+      "id": "edu_25c3dd864c51",
+      "title": "How to Prepare for a Second Opinion Visit",
+      "category": "General Health",
+      "type": "video",
+      "summary": "Checklist covering reports, medications, and questions to bring.",
+      "language": "English",
+      "duration_minutes": 8,
+      "url": "https://example.com/education/second-opinion-checklist"
+    }
+  ],
+  "payments": []
+}

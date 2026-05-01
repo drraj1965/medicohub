@@ -1,0 +1,12 @@
+.env
+secrets/
+backend_fastapi/.venv/
+backend_fastapi/__pycache__/
+backend_fastapi/**/*.pyc
+frontend_flutter/.dart_tool/
+frontend_flutter/build/
+frontend_flutter/windows/flutter/ephemeral/
+frontend_flutter/windows/flutter/generated_plugin_registrant.cc
+frontend_flutter/windows/flutter/generated_plugins.cmake
+frontend_flutter/pubspec.lock
+*.log
