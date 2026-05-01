@@ -1,5 +1,6 @@
 param(
   [int]$Port = 8012,
+  [string]$BindHost = "",
   [switch]$Reload = $true
 )
 
@@ -16,7 +17,13 @@ if (!(Test-Path $pythonExe)) {
 
 Push-Location $projectRoot
 try {
-  $arguments = @("-m", "uvicorn", "backend_fastapi.main:app", "--host", "127.0.0.1", "--port", "$Port")
+  $resolvedHost = if ([string]::IsNullOrWhiteSpace($BindHost)) {
+    if ([string]::IsNullOrWhiteSpace($env:BACKEND_HOST)) { "127.0.0.1" } else { $env:BACKEND_HOST }
+  } else {
+    $BindHost
+  }
+
+  $arguments = @("-m", "uvicorn", "backend_fastapi.main:app", "--host", "$resolvedHost", "--port", "$Port")
   if ($Reload) {
     $arguments += "--reload"
   }

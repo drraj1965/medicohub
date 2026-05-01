@@ -12,6 +12,7 @@ class AppApiService {
 
   final http.Client _client;
   static final String _baseUrl = _resolveBaseUrl();
+  static const Duration _requestTimeout = Duration(seconds: 8);
 
   String get baseUrl => _baseUrl;
 
@@ -30,7 +31,9 @@ class AppApiService {
   }
 
   Future<List<ForumQuestion>> fetchQuestions() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/questions'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/questions'))
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'questions');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -50,7 +53,9 @@ class AppApiService {
   }
 
   Future<List<EducationItem>> fetchEducation() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/education/library'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/education/library'))
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'education');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -59,7 +64,9 @@ class AppApiService {
   }
 
   Future<List<BlogArticle>> fetchBlogArticles() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/blog/articles'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/blog/articles'))
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'blog articles');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -68,7 +75,9 @@ class AppApiService {
   }
 
   Future<List<TitleTemplate>> fetchTitleTemplates() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/title-templates'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/title-templates'))
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'title templates');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -77,7 +86,9 @@ class AppApiService {
   }
 
   Future<List<DoctorDirectoryEntry>> fetchDoctors() async {
-    final response = await _client.get(Uri.parse('$_baseUrl/doctors'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/doctors'))
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'doctors');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -90,7 +101,7 @@ class AppApiService {
       Uri.parse('$_baseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email, 'password': 'Passw0rd!'}),
-    );
+    ).timeout(_requestTimeout);
     _ensureSuccess(response, 'login');
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return UserProfile.fromJson(data['user'] as Map<String, dynamic>);
@@ -138,7 +149,9 @@ class AppApiService {
   }
 
   Future<UserProfile?> fetchUserProfile(String userId) async {
-    final response = await _client.get(Uri.parse('$_baseUrl/users/$userId'));
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/users/$userId'))
+        .timeout(_requestTimeout);
     if (response.statusCode == 404) {
       return null;
     }
@@ -149,7 +162,7 @@ class AppApiService {
   Future<UserProfile?> lookupUserByEmail(String email) async {
     final response = await _client.get(
       Uri.parse('$_baseUrl/users/lookup/by-email?email=${Uri.encodeQueryComponent(email)}'),
-    );
+    ).timeout(_requestTimeout);
     if (response.statusCode == 404 || response.body.trim().isEmpty || response.body.trim() == 'null') {
       return null;
     }
@@ -165,7 +178,7 @@ class AppApiService {
         : '?user_id=${Uri.encodeQueryComponent(userId)}';
     final response = await _client.get(
       Uri.parse('$_baseUrl/notifications/outbox$suffix'),
-    );
+    ).timeout(_requestTimeout);
     _ensureSuccess(response, 'notifications');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -177,7 +190,7 @@ class AppApiService {
   Future<NotificationSettings> fetchNotificationSettings() async {
     final response = await _client.get(
       Uri.parse('$_baseUrl/notification-settings'),
-    );
+    ).timeout(_requestTimeout);
     _ensureSuccess(response, 'notification settings');
     return NotificationSettings.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,

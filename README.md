@@ -40,6 +40,14 @@ doctor_forum_app/
 
 `run_all.ps1` starts the FastAPI backend first and then launches the Flutter app. The frontend bootstrap script creates any missing Flutter platform folders, runs `flutter pub get`, and launches the requested device target.
 
+## Android testing note
+
+- The Android APK can be built and shared from GitHub Releases, but it is currently a backend-connected preview build.
+- For local phone testing, use either:
+  - USB debugging plus `adb reverse tcp:8012 tcp:8012`, or
+  - a rebuild with your laptop LAN URL via `-ApiBaseUrl "http://YOUR_LAPTOP_IP:8012"`
+- Truly standalone external testing for friends will require a publicly hosted backend before broader promotion.
+
 ## Default local endpoints
 
 - Backend health: `http://127.0.0.1:8012/`

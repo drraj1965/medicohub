@@ -198,8 +198,59 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   }
 
   Future<void> _bootstrap() async {
+    SharedPreferences? prefs;
+    UpdateInfo? updateInfo;
     try {
       await _ensureBundledBackendForWindows();
+      final results = await Future.wait([
+        _updateService.checkForUpdates(),
+        SharedPreferences.getInstance(),
+      ]);
+      if (!mounted) {
+        return;
+      }
+      updateInfo = results[0] as UpdateInfo?;
+      prefs = results[1] as SharedPreferences;
+      setState(() {
+        _prefs = prefs;
+        _updateInfo = updateInfo;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _prefs = prefs;
+        _updateInfo = updateInfo;
+        _loading = false;
+        _errorMessage = error.toString();
+      });
+    }
+    unawaited(_loadInitialRemoteData());
+  }
+
+  Future<void> _loadInitialRemoteData() async {
+    final backendHealthy = await _api.checkHealth();
+    if (!mounted) {
+      return;
+    }
+    if (!backendHealthy) {
+      setState(() {
+        _notificationSettings = NotificationSettings.fromJson(const {});
+        _notificationPhraseController.text =
+            _notificationSettings?.whatsAppActivationPhrase ?? '';
+        _notificationTargetController.text =
+            _notificationSettings?.whatsAppActivationTarget ?? '';
+        _emailStatusNoteController.text =
+            _notificationSettings?.emailStatusNote ?? '';
+        _errorMessage =
+            'Backend not reachable at ${_api.baseUrl}. On Android, start the backend on your laptop and use adb reverse for USB testing or rebuild the APK with your laptop Wi-Fi URL.';
+      });
+      return;
+    }
+
+    try {
       final results = await Future.wait([
         _api.fetchQuestions(),
         _api.fetchEducation(),
@@ -207,8 +258,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _api.fetchTitleTemplates(),
         _api.fetchDoctors(),
         _api.fetchNotificationSettings(),
-        _updateService.checkForUpdates(),
-        SharedPreferences.getInstance(),
       ]);
       if (!mounted) {
         return;
@@ -222,9 +271,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _doctors = doctors;
         _selectedDoctorId = doctors.isEmpty ? null : doctors.first.id;
         _notificationSettings = results[5] as NotificationSettings;
-        _updateInfo = results[6] as UpdateInfo?;
-        _prefs = results[7] as SharedPreferences;
-        _loading = false;
+        if (_errorMessage != null &&
+            _errorMessage!.startsWith('Backend not reachable at ')) {
+          _errorMessage = null;
+        }
       });
       _notificationPhraseController.text =
           _notificationSettings?.whatsAppActivationPhrase ?? '';
@@ -238,8 +288,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         return;
       }
       setState(() {
-        _loading = false;
-        _errorMessage = error.toString();
+        _notificationSettings = NotificationSettings.fromJson(const {});
+        _notificationPhraseController.text =
+            _notificationSettings?.whatsAppActivationPhrase ?? '';
+        _notificationTargetController.text =
+            _notificationSettings?.whatsAppActivationTarget ?? '';
+        _emailStatusNoteController.text =
+            _notificationSettings?.emailStatusNote ?? '';
+        _errorMessage = 'Could not load backend data: $error';
       });
     }
   }

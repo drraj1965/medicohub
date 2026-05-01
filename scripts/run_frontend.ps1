@@ -21,6 +21,9 @@ try {
   }
 
   & $flutter pub get
+  if ($Device -eq "android" -and [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
+    Write-Warning "No -ApiBaseUrl was provided. A physical Android phone will not be able to reach your laptop backend unless you pass your laptop LAN URL, for example http://192.168.1.23:8012"
+  }
   if ([string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
     & $flutter run -d $Device
   } else {

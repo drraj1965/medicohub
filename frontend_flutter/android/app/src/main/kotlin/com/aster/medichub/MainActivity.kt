@@ -1,4 +1,4 @@
-package com.example.medicohub
+package com.aster.medichub
 
 import io.flutter.embedding.android.FlutterActivity
 
