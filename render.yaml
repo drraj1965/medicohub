@@ -11,6 +11,8 @@ services:
     envVars:
       - key: APP_ENV
         value: production
+      - key: PYTHON_VERSION
+        value: 3.12.3
       - key: ENABLE_FIRESTORE
         value: "true"
       - key: ENABLE_FIREBASE_STORAGE
