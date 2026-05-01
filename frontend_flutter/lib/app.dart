@@ -160,6 +160,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   String? _audioAttachmentPath;
   SharedPreferences? _prefs;
   Timer? _emailLookupDebounce;
+  Timer? _backendRetryTimer;
   late int _humanCheckLeft;
   late int _humanCheckRight;
   final TextEditingController _humanCheckController = TextEditingController();
@@ -193,6 +194,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     _emailStatusNoteController.dispose();
     _humanCheckController.dispose();
     _emailLookupDebounce?.cancel();
+    _backendRetryTimer?.cancel();
     _voiceService.dispose();
     super.dispose();
   }
@@ -230,7 +232,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     unawaited(_loadInitialRemoteData());
   }
 
-  Future<void> _loadInitialRemoteData() async {
+  Future<void> _loadInitialRemoteData({int attempt = 0}) async {
     final backendHealthy = await _api.checkHealth();
     if (!mounted) {
       return;
@@ -245,12 +247,26 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _emailStatusNoteController.text =
             _notificationSettings?.emailStatusNote ?? '';
         _errorMessage =
-            'Backend not reachable at ${_api.baseUrl}. On Android, start the backend on your laptop and use adb reverse for USB testing or rebuild the APK with your laptop Wi-Fi URL.';
+            attempt < 6
+                ? 'Backend at ${_api.baseUrl} is waking up. Retrying automatically...'
+                : 'Backend not reachable at ${_api.baseUrl}. If this is a public deployment, wait a moment and reopen the app. For local Android testing, start the backend on your laptop and use adb reverse or rebuild the APK with your laptop Wi-Fi URL.';
       });
+      if (attempt < 6) {
+        _backendRetryTimer?.cancel();
+        _backendRetryTimer = Timer(
+          Duration(seconds: 5 + (attempt * 5)),
+          () {
+            if (mounted) {
+              unawaited(_loadInitialRemoteData(attempt: attempt + 1));
+            }
+          },
+        );
+      }
       return;
     }
 
     try {
+      _backendRetryTimer?.cancel();
       final results = await Future.wait([
         _api.fetchQuestions(),
         _api.fetchEducation(),
@@ -295,8 +311,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             _notificationSettings?.whatsAppActivationTarget ?? '';
         _emailStatusNoteController.text =
             _notificationSettings?.emailStatusNote ?? '';
-        _errorMessage = 'Could not load backend data: $error';
+        _errorMessage = attempt < 6
+            ? 'Public backend is still warming up. Retrying automatically...'
+            : 'Could not load backend data: $error';
       });
+      if (attempt < 6) {
+        _backendRetryTimer?.cancel();
+        _backendRetryTimer = Timer(
+          Duration(seconds: 5 + (attempt * 5)),
+          () {
+            if (mounted) {
+              unawaited(_loadInitialRemoteData(attempt: attempt + 1));
+            }
+          },
+        );
+      }
     }
   }
 
