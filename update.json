@@ -1,9 +1,9 @@
 {
-  "latest_version": "1.2.0",
-  "download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.2.0/medicohub-windows-v1.2.0-portable.zip",
+  "latest_version": "1.2.1",
+  "download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.2.1/medicohub-windows-v1.2.1-portable.zip",
   "release_notes": [
-    "Windows portable build now bundles a hidden backend for remote desktop installs",
-    "Android preview build added for USB and backend-connected phone testing",
-    "Startup flow now falls back more gracefully when backend connectivity is delayed"
+    "Windows portable build refreshed for the public backend rollout",
+    "Android public-beta APK now targets the Render-hosted backend",
+    "Startup flow retries more gracefully while the public backend wakes up"
   ]
 }
