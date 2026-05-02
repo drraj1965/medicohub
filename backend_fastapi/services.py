@@ -11,6 +11,9 @@ import requests
 
 try:
     from .models import (
+        AdCampaignCreate,
+        AdCampaignRecord,
+        AdCampaignUpdate,
         AttachmentCreate,
         AttachmentRecord,
         AuditEvent,
@@ -48,6 +51,9 @@ try:
     from .storage import append_audit
 except ImportError:
     from models import (  # type: ignore
+        AdCampaignCreate,
+        AdCampaignRecord,
+        AdCampaignUpdate,
         AttachmentCreate,
         AttachmentRecord,
         AuditEvent,
@@ -397,6 +403,88 @@ def update_notification_settings(payload: NotificationSettingsUpdate) -> dict:
     ).model_dump(mode="json")
     repository.upsert_notification_settings(updated)
     emit_audit("notification_settings", updated["id"], "updated", payload.actor_id, updated)
+    return updated
+
+
+def list_ad_campaigns() -> list[dict]:
+    campaigns = repository.list_ad_campaigns()
+    return sorted(
+        campaigns,
+        key=lambda item: (
+            0 if item.get("active", True) else 1,
+            -(item.get("priority", 50) or 50),
+            item.get("updated_at", ""),
+        ),
+    )
+
+
+def create_ad_campaign(payload: AdCampaignCreate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can create ad campaigns.")
+
+    campaign = AdCampaignRecord(
+        sponsor_name=payload.sponsor_name.strip() or "Sponsored",
+        title=payload.title.strip(),
+        subtitle=payload.subtitle.strip(),
+        cta_label=payload.cta_label.strip() or "Learn more",
+        target_url=payload.target_url.strip(),
+        keywords=[item.strip().lower() for item in payload.keywords if item.strip()],
+        categories=[item.strip() for item in payload.categories if item.strip()],
+        placements=payload.placements or ["home"],
+        languages=[item.strip() for item in payload.languages if item.strip()],
+        priority=payload.priority,
+        created_by=payload.actor_id,
+    ).model_dump(mode="json")
+    repository.create_ad_campaign(campaign)
+    emit_audit("ad_campaign", campaign["id"], "created", payload.actor_id, campaign)
+    return campaign
+
+
+def update_ad_campaign(campaign_id: str, payload: AdCampaignUpdate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can update ad campaigns.")
+
+    updates = {
+        "updated_at": utc_now().isoformat(),
+    }
+    for field in [
+        "sponsor_name",
+        "title",
+        "subtitle",
+        "cta_label",
+        "target_url",
+        "keywords",
+        "categories",
+        "placements",
+        "languages",
+        "priority",
+        "active",
+    ]:
+        value = getattr(payload, field)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                updates[field] = cleaned
+        elif isinstance(value, list):
+            updates[field] = [
+                item.strip().lower() if field == "keywords" else item.strip()
+                for item in value
+                if str(item).strip()
+            ]
+        else:
+            updates[field] = value
+    updated = repository.update_ad_campaign(campaign_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Ad campaign not found.")
+    emit_audit("ad_campaign", campaign_id, "updated", payload.actor_id, updated)
     return updated
 
 

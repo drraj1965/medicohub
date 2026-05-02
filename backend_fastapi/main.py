@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     from .models import (
+        AdCampaignCreate,
+        AdCampaignUpdate,
         AttachmentCreate,
         AuthRequest,
         AuthResponse,
@@ -25,6 +27,7 @@ try:
     )
     from .services import (
         add_response,
+        create_ad_campaign,
         add_thread_message,
         authenticate,
         create_blog_article,
@@ -39,6 +42,7 @@ try:
         list_education,
         list_doctors,
         list_blog_articles,
+        list_ad_campaigns,
         list_notifications,
         list_questions,
         list_title_templates,
@@ -51,6 +55,7 @@ try:
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
+        update_ad_campaign,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -59,6 +64,8 @@ try:
     from .storage import read_audit
 except ImportError:
     from models import (  # type: ignore
+        AdCampaignCreate,
+        AdCampaignUpdate,
         AttachmentCreate,
         AuthRequest,
         AuthResponse,
@@ -79,6 +86,7 @@ except ImportError:
     )
     from services import (  # type: ignore
         add_response,
+        create_ad_campaign,
         add_thread_message,
         authenticate,
         create_blog_article,
@@ -93,6 +101,7 @@ except ImportError:
         list_education,
         list_doctors,
         list_blog_articles,
+        list_ad_campaigns,
         list_notifications,
         list_questions,
         list_title_templates,
@@ -105,6 +114,7 @@ except ImportError:
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
+        update_ad_campaign,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -113,7 +123,7 @@ except ImportError:
     from storage import read_audit  # type: ignore
 
 
-app = FastAPI(title="MedicoHub Backend", version="1.2.1")
+app = FastAPI(title="MedicoHub Backend", version="1.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -258,6 +268,21 @@ def blog_articles() -> list[dict]:
 @app.post("/blog/articles")
 def publish_blog_article(payload: BlogArticleCreate) -> dict:
     return create_blog_article(payload)
+
+
+@app.get("/ad-campaigns")
+def ad_campaigns() -> list[dict]:
+    return list_ad_campaigns()
+
+
+@app.post("/ad-campaigns")
+def save_ad_campaign(payload: AdCampaignCreate) -> dict:
+    return create_ad_campaign(payload)
+
+
+@app.patch("/ad-campaigns/{campaign_id}")
+def patch_ad_campaign(campaign_id: str, payload: AdCampaignUpdate) -> dict:
+    return update_ad_campaign(campaign_id, payload)
 
 
 @app.get("/notifications/outbox")

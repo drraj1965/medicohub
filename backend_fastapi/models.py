@@ -279,6 +279,57 @@ class NotificationSettingsUpdate(BaseModel):
     email_status_note: str = "Email notifications are coming later."
 
 
+class AdCampaignRecord(BaseModel):
+    id: str = Field(default_factory=lambda: make_id("ad"))
+    sponsor_name: str = "Sponsored"
+    title: str
+    subtitle: str
+    cta_label: str = "Learn more"
+    target_url: str
+    keywords: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    placements: list[Literal["home", "question", "education", "blog"]] = Field(
+        default_factory=lambda: ["home"]
+    )
+    languages: list[str] = Field(default_factory=list)
+    priority: int = 50
+    active: bool = True
+    created_by: str
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class AdCampaignCreate(BaseModel):
+    actor_id: str
+    sponsor_name: str = "Sponsored"
+    title: str
+    subtitle: str
+    cta_label: str = "Learn more"
+    target_url: str
+    keywords: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    placements: list[Literal["home", "question", "education", "blog"]] = Field(
+        default_factory=lambda: ["home"]
+    )
+    languages: list[str] = Field(default_factory=list)
+    priority: int = 50
+
+
+class AdCampaignUpdate(BaseModel):
+    actor_id: str
+    sponsor_name: str | None = None
+    title: str | None = None
+    subtitle: str | None = None
+    cta_label: str | None = None
+    target_url: str | None = None
+    keywords: list[str] | None = None
+    categories: list[str] | None = None
+    placements: list[Literal["home", "question", "education", "blog"]] | None = None
+    languages: list[str] | None = None
+    priority: int | None = None
+    active: bool | None = None
+
+
 class QuestionRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("qst"))
     author_id: str

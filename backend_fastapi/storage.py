@@ -30,6 +30,7 @@ def ensure_data_files() -> None:
                     "notifications": [],
                     "otp_requests": [],
                     "notification_settings": {},
+                    "ad_campaigns": [],
                 },
                 indent=2,
             ),
@@ -54,6 +55,7 @@ def load_db() -> dict[str, Any]:
         "notifications",
         "otp_requests",
         "notification_settings",
+        "ad_campaigns",
     ]:
         if key not in db:
             db[key] = {} if key == "notification_settings" else []

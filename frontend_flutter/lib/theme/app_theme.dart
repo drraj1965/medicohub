@@ -5,6 +5,11 @@ enum MedicoHubThemePreset {
   light,
   rose,
   mint,
+  ocean,
+  amber,
+  lavender,
+  slate,
+  custom,
 }
 
 extension MedicoHubThemePresetLabel on MedicoHubThemePreset {
@@ -18,12 +23,46 @@ extension MedicoHubThemePresetLabel on MedicoHubThemePreset {
         return 'Pink';
       case MedicoHubThemePreset.mint:
         return 'Light Green';
+      case MedicoHubThemePreset.ocean:
+        return 'Ocean Blue';
+      case MedicoHubThemePreset.amber:
+        return 'Warm Amber';
+      case MedicoHubThemePreset.lavender:
+        return 'Lavender';
+      case MedicoHubThemePreset.slate:
+        return 'Slate';
+      case MedicoHubThemePreset.custom:
+        return 'Custom HEX';
     }
   }
 }
 
-ThemeData buildMedicoHubTheme(MedicoHubThemePreset preset) {
-  switch (preset) {
+class MedicoHubThemeConfig {
+  const MedicoHubThemeConfig({
+    required this.preset,
+    this.customSeedHex = '#4F8C73',
+    this.customDarkMode = false,
+  });
+
+  final MedicoHubThemePreset preset;
+  final String customSeedHex;
+  final bool customDarkMode;
+
+  MedicoHubThemeConfig copyWith({
+    MedicoHubThemePreset? preset,
+    String? customSeedHex,
+    bool? customDarkMode,
+  }) {
+    return MedicoHubThemeConfig(
+      preset: preset ?? this.preset,
+      customSeedHex: customSeedHex ?? this.customSeedHex,
+      customDarkMode: customDarkMode ?? this.customDarkMode,
+    );
+  }
+}
+
+ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
+  switch (config.preset) {
     case MedicoHubThemePreset.dark:
       return _buildTheme(
         seed: const Color(0xFF4F8C73),
@@ -60,7 +99,78 @@ ThemeData buildMedicoHubTheme(MedicoHubThemePreset preset) {
         cardColor: const Color(0xFFF8FFF8),
         fieldColor: const Color(0xFFE0F2E4),
       );
+    case MedicoHubThemePreset.ocean:
+      return _buildTheme(
+        seed: const Color(0xFF2A7DB8),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF1F8FF),
+        surface: const Color(0xFFFDFEFF),
+        cardColor: const Color(0xFFF7FBFF),
+        fieldColor: const Color(0xFFDDEFFC),
+      );
+    case MedicoHubThemePreset.amber:
+      return _buildTheme(
+        seed: const Color(0xFFCB8A18),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFFFF8ED),
+        surface: const Color(0xFFFFFDF9),
+        cardColor: const Color(0xFFFFFBF2),
+        fieldColor: const Color(0xFFF7E7C8),
+      );
+    case MedicoHubThemePreset.lavender:
+      return _buildTheme(
+        seed: const Color(0xFF8570D6),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF5F2FF),
+        surface: const Color(0xFFFEFDFF),
+        cardColor: const Color(0xFFF8F6FF),
+        fieldColor: const Color(0xFFE8E0FF),
+      );
+    case MedicoHubThemePreset.slate:
+      return _buildTheme(
+        seed: const Color(0xFF5A6D7C),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF101417),
+        surface: const Color(0xFF171C20),
+        cardColor: const Color(0xFF1E252B),
+        fieldColor: const Color(0xFF24303A),
+      );
+    case MedicoHubThemePreset.custom:
+      final seed = parseHexColor(config.customSeedHex) ?? const Color(0xFF4F8C73);
+      final dark = config.customDarkMode;
+      return _buildTheme(
+        seed: seed,
+        brightness: dark ? Brightness.dark : Brightness.light,
+        scaffoldBackgroundColor: dark
+            ? _tint(seed, 0.08)
+            : _mix(seed, Colors.white, 0.90),
+        surface: dark ? _tint(seed, 0.16) : _mix(seed, Colors.white, 0.97),
+        cardColor: dark ? _tint(seed, 0.20) : _mix(seed, Colors.white, 0.94),
+        fieldColor: dark ? _tint(seed, 0.28) : _mix(seed, Colors.white, 0.84),
+      );
   }
+}
+
+String normalizeHexColor(String raw) {
+  final cleaned = raw.trim().replaceAll('#', '').toUpperCase();
+  if (cleaned.length == 6 || cleaned.length == 8) {
+    return '#$cleaned';
+  }
+  return '';
+}
+
+Color? parseHexColor(String raw) {
+  final normalized = normalizeHexColor(raw);
+  if (normalized.isEmpty) {
+    return null;
+  }
+  final value = normalized.substring(1);
+  final buffer = StringBuffer();
+  if (value.length == 6) {
+    buffer.write('FF');
+  }
+  buffer.write(value);
+  return Color(int.parse(buffer.toString(), radix: 16));
 }
 
 ThemeData _buildTheme({
@@ -97,4 +207,13 @@ ThemeData _buildTheme({
       ),
     ),
   );
+}
+
+Color _mix(Color a, Color b, double amount) {
+  final clamped = amount.clamp(0.0, 1.0);
+  return Color.lerp(a, b, clamped) ?? a;
+}
+
+Color _tint(Color seed, double amount) {
+  return _mix(seed, Colors.black, amount);
 }

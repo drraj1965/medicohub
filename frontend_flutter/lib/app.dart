@@ -40,6 +40,7 @@ const Map<String, String> _languageLocales = <String, String>{
   'Gujarati': 'gu-IN',
   'Bengali': 'bn-IN',
 };
+const List<String> _adPlacements = <String>['home', 'question', 'education', 'blog'];
 
 class MedicoHubApp extends StatefulWidget {
   const MedicoHubApp({super.key});
@@ -49,17 +50,19 @@ class MedicoHubApp extends StatefulWidget {
 }
 
 class _MedicoHubAppState extends State<MedicoHubApp> {
-  MedicoHubThemePreset _themePreset = MedicoHubThemePreset.dark;
+  MedicoHubThemeConfig _themeConfig = const MedicoHubThemeConfig(
+    preset: MedicoHubThemePreset.dark,
+  );
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MedicoHub',
       debugShowCheckedModeBanner: false,
-      theme: buildMedicoHubTheme(_themePreset),
+      theme: buildMedicoHubTheme(_themeConfig),
       home: MedicoHubHomePage(
-        themePreset: _themePreset,
-        onThemeChanged: (preset) => setState(() => _themePreset = preset),
+        themeConfig: _themeConfig,
+        onThemeChanged: (config) => setState(() => _themeConfig = config),
       ),
     );
   }
@@ -68,12 +71,12 @@ class _MedicoHubAppState extends State<MedicoHubApp> {
 class MedicoHubHomePage extends StatefulWidget {
   const MedicoHubHomePage({
     super.key,
-    required this.themePreset,
+    required this.themeConfig,
     required this.onThemeChanged,
   });
 
-  final MedicoHubThemePreset themePreset;
-  final ValueChanged<MedicoHubThemePreset> onThemeChanged;
+  final MedicoHubThemeConfig themeConfig;
+  final ValueChanged<MedicoHubThemeConfig> onThemeChanged;
 
   @override
   State<MedicoHubHomePage> createState() => _MedicoHubHomePageState();
@@ -113,6 +116,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
       TextEditingController();
   final TextEditingController _emailStatusNoteController =
       TextEditingController();
+  final TextEditingController _themeHexController = TextEditingController();
+  final TextEditingController _adSponsorController = TextEditingController();
+  final TextEditingController _adTitleController = TextEditingController();
+  final TextEditingController _adSubtitleController = TextEditingController();
+  final TextEditingController _adCtaController =
+      TextEditingController(text: 'Learn more');
+  final TextEditingController _adUrlController = TextEditingController();
+  final TextEditingController _adKeywordsController = TextEditingController();
+  final TextEditingController _adCategoriesController = TextEditingController();
+  final TextEditingController _adPriorityController =
+      TextEditingController(text: '50');
 
   bool _consentAccepted = false;
   bool _premium = false;
@@ -129,6 +143,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   bool _passwordVisible = false;
   bool _currentPasswordVisible = false;
   bool _newPasswordVisible = false;
+  bool _customThemeDarkMode = false;
+  bool _updateAutoOpen = false;
   int _tabIndex = 0;
 
   String _selectedExpiry = '7d';
@@ -142,6 +158,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   String _inviteDoctorSpecialty = 'General Health';
   String? _editingQuestionId;
   String _articleCategory = 'General Health';
+  String _currentVersion = UpdateService.currentVersion;
+  UpdateCheckFrequency _updateFrequency = UpdateCheckFrequency.daily;
+  String _selectedAdPlacement = 'home';
+  String _selectedAdLanguage = 'English';
 
   UserProfile? _activeUser;
   UpdateInfo? _updateInfo;
@@ -149,6 +169,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
   List<ForumQuestion> _questions = const [];
   List<EducationItem> _education = const [];
   List<BlogArticle> _blogArticles = const [];
+  List<AdCampaign> _adCampaigns = const [];
   List<NotificationOutboxItem> _notifications = const [];
   NotificationSettings? _notificationSettings;
   List<UploadedAttachment> _uploadedAttachments = const [];
@@ -192,6 +213,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     _notificationPhraseController.dispose();
     _notificationTargetController.dispose();
     _emailStatusNoteController.dispose();
+    _themeHexController.dispose();
+    _adSponsorController.dispose();
+    _adTitleController.dispose();
+    _adSubtitleController.dispose();
+    _adCtaController.dispose();
+    _adUrlController.dispose();
+    _adKeywordsController.dispose();
+    _adCategoriesController.dispose();
+    _adPriorityController.dispose();
     _humanCheckController.dispose();
     _emailLookupDebounce?.cancel();
     _backendRetryTimer?.cancel();
@@ -205,19 +235,33 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     try {
       await _ensureBundledBackendForWindows();
       final results = await Future.wait([
-        _updateService.checkForUpdates(),
         SharedPreferences.getInstance(),
       ]);
       if (!mounted) {
         return;
       }
-      updateInfo = results[0] as UpdateInfo?;
-      prefs = results[1] as SharedPreferences;
+      prefs = results[0];
+      _loadThemePreferences(prefs);
+      _loadUpdatePreferences(prefs);
+      const currentVersion = UpdateService.currentVersion;
+      if (_updateService.shouldCheck(
+        prefs: prefs,
+        frequency: _updateFrequency,
+      )) {
+        updateInfo = await _updateService.checkForUpdates(
+          currentVersion: currentVersion,
+        );
+        await _updateService.markChecked(prefs);
+      }
       setState(() {
         _prefs = prefs;
         _updateInfo = updateInfo;
+        _currentVersion = currentVersion;
         _loading = false;
       });
+      if (updateInfo != null) {
+        unawaited(_handleAutoUpdateIfNeeded(updateInfo));
+      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -225,6 +269,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
       setState(() {
         _prefs = prefs;
         _updateInfo = updateInfo;
+        _currentVersion = UpdateService.currentVersion;
         _loading = false;
         _errorMessage = error.toString();
       });
@@ -274,6 +319,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _api.fetchTitleTemplates(),
         _api.fetchDoctors(),
         _api.fetchNotificationSettings(),
+        _api.fetchAdCampaigns(),
       ]);
       if (!mounted) {
         return;
@@ -287,6 +333,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         _doctors = doctors;
         _selectedDoctorId = doctors.isEmpty ? null : doctors.first.id;
         _notificationSettings = results[5] as NotificationSettings;
+        _adCampaigns = results[6] as List<AdCampaign>;
         if (_errorMessage != null &&
             _errorMessage!.startsWith('Backend not reachable at ')) {
           _errorMessage = null;
@@ -311,6 +358,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             _notificationSettings?.whatsAppActivationTarget ?? '';
         _emailStatusNoteController.text =
             _notificationSettings?.emailStatusNote ?? '';
+        _adCampaigns = const [];
         _errorMessage = attempt < 6
             ? 'Public backend is still warming up. Retrying automatically...'
             : 'Could not load backend data: $error';
@@ -326,6 +374,154 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
           },
         );
       }
+    }
+  }
+
+  static const String _themePresetKey = 'theme_preset';
+  static const String _themeCustomHexKey = 'theme_custom_hex';
+  static const String _themeCustomDarkKey = 'theme_custom_dark';
+
+  void _loadThemePreferences(SharedPreferences prefs) {
+    final presetName = prefs.getString(_themePresetKey);
+    final preset = MedicoHubThemePreset.values.firstWhere(
+      (value) => value.name == presetName,
+      orElse: () => widget.themeConfig.preset,
+    );
+    final customHex =
+        prefs.getString(_themeCustomHexKey) ?? widget.themeConfig.customSeedHex;
+    final customDark =
+        prefs.getBool(_themeCustomDarkKey) ?? widget.themeConfig.customDarkMode;
+    final config = MedicoHubThemeConfig(
+      preset: preset,
+      customSeedHex: customHex,
+      customDarkMode: customDark,
+    );
+    _themeHexController.text = customHex;
+    _customThemeDarkMode = customDark;
+    widget.onThemeChanged(config);
+  }
+
+  Future<void> _persistThemePreferences(MedicoHubThemeConfig config) async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setString(_themePresetKey, config.preset.name);
+    await prefs.setString(_themeCustomHexKey, config.customSeedHex);
+    await prefs.setBool(_themeCustomDarkKey, config.customDarkMode);
+  }
+
+  void _loadUpdatePreferences(SharedPreferences prefs) {
+    _updateFrequency = UpdateCheckFrequencyLabel.fromStorage(
+      prefs.getString(UpdateService.preferenceFrequencyKey),
+    );
+    _updateAutoOpen = prefs.getBool(UpdateService.preferenceAutoOpenKey) ?? false;
+  }
+
+  Future<void> _persistUpdatePreferences() async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setString(
+      UpdateService.preferenceFrequencyKey,
+      _updateFrequency.storageValue,
+    );
+    await prefs.setBool(
+      UpdateService.preferenceAutoOpenKey,
+      _updateAutoOpen,
+    );
+  }
+
+  Future<void> _handleAutoUpdateIfNeeded(UpdateInfo info) async {
+    final prefs = _prefs;
+    if (prefs == null || !_updateAutoOpen) {
+      return;
+    }
+    final lastOpened =
+        prefs.getString(UpdateService.preferenceLastOpenedVersionKey);
+    if (lastOpened == info.latestVersion) {
+      return;
+    }
+    final url = _updateService.preferredDownloadUrl(info);
+    if (url.isEmpty) {
+      return;
+    }
+    await prefs.setString(
+      UpdateService.preferenceLastOpenedVersionKey,
+      info.latestVersion,
+    );
+    await _openExternalUrl(url);
+  }
+
+  Future<void> _checkForUpdatesNow() async {
+    final prefs = _prefs;
+    try {
+      final info = await _updateService.checkForUpdates(
+        currentVersion: _currentVersion,
+      );
+      if (prefs != null) {
+        await _updateService.markChecked(prefs);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _updateInfo = info;
+        _voiceStatus = info == null
+            ? 'You are already on the latest MedicoHub version.'
+            : 'Update ${info.latestVersion} is available.';
+      });
+      if (info != null) {
+        await _handleAutoUpdateIfNeeded(info);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'Could not check for updates: $error';
+      });
+    }
+  }
+
+  Future<void> _openUpdateDownload() async {
+    final info = _updateInfo;
+    if (info == null) {
+      setState(() {
+        _voiceStatus = 'No pending update is available right now.';
+      });
+      return;
+    }
+    final url = _updateService.preferredDownloadUrl(info);
+    if (url.isEmpty) {
+      setState(() {
+        _errorMessage = 'No download link is configured for this platform yet.';
+      });
+      return;
+    }
+    await _openExternalUrl(url);
+  }
+
+  Future<void> _openExternalUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'This link is invalid: $url';
+      });
+      return;
+    }
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      setState(() {
+        _errorMessage = 'Could not open $url';
+      });
     }
   }
 
@@ -817,6 +1013,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
     final pendingQuestions = scopedQuestions
         .where((question) => question.status == 'open')
         .length;
+    final homeCampaigns = _matchingCampaignsForText(
+      placement: 'home',
+      primaryText: user.specialties.join(' '),
+      secondaryText: scopedQuestions
+          .take(5)
+          .map((item) => '${item.title} ${item.body}')
+          .join(' '),
+      language: _selectedLanguage,
+    );
+    final AdCampaign? homeCampaign =
+        homeCampaigns.isEmpty ? null : homeCampaigns.first;
     return ListView(
       children: [
         if (_errorMessage != null) ...[
@@ -836,6 +1043,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         const SizedBox(height: 16),
         _buildWhatsAppActivationBadge(context),
         const SizedBox(height: 16),
+        if (homeCampaign != null) ...[
+          _buildSponsoredCard(
+            context,
+            homeCampaign,
+            label: 'Suggested sponsor',
+          ),
+          const SizedBox(height: 16),
+        ],
         LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth > 900;
@@ -945,23 +1160,42 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
           ),
         ),
         const SizedBox(height: 16),
-        ...scopedQuestions.take(4).map(
-              (question) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _QuestionCard(
-                  question: question,
-                  onEdit: _canEditQuestion(question)
-                      ? () => _startEditingQuestion(question)
-                      : null,
-                  onTogglePublic: _canEditQuestion(question)
-                      ? () => _toggleQuestionVisibility(question)
-                      : null,
-                  onDelete: _canEditQuestion(question)
-                      ? () => _deleteQuestion(question)
-                      : null,
-                ),
+        ...scopedQuestions.take(4).expand((question) {
+          final relatedCampaign = _matchingCampaignsForText(
+            placement: 'question',
+            primaryText: question.title,
+            secondaryText:
+                '${question.body} ${question.aiSummary} ${question.responses.map((item) => item.fullText).join(' ')}',
+            category: question.headingGroup,
+            language: question.language,
+          ).take(1);
+          return <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _QuestionCard(
+                question: question,
+                onEdit: _canEditQuestion(question)
+                    ? () => _startEditingQuestion(question)
+                    : null,
+                onTogglePublic: _canEditQuestion(question)
+                    ? () => _toggleQuestionVisibility(question)
+                    : null,
+                onDelete: _canEditQuestion(question)
+                    ? () => _deleteQuestion(question)
+                    : null,
               ),
             ),
+            for (final campaign in relatedCampaign)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildSponsoredCard(
+                  context,
+                  campaign,
+                  label: 'Sponsored resource',
+                ),
+              ),
+          ];
+        }),
       ],
     );
   }
@@ -1083,6 +1317,53 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             const SizedBox(height: 12),
             const Text(
               'Admins govern the doctor roster, doctors answer educational questions, and patients can ask structured questions addressed to a specific doctor with files and voice notes.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSponsoredCard(
+    BuildContext context,
+    AdCampaign campaign, {
+    String label = 'Sponsored',
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Chip(
+                  label: Text(label),
+                  backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    campaign.sponsorName,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              campaign.title,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(campaign.subtitle),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                onPressed: () => _launchAdCampaign(campaign),
+                child: Text(campaign.ctaLabel),
+              ),
             ),
           ],
         ),
@@ -1416,59 +1697,99 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         if (_blogArticles.isNotEmpty) ...[
           Text('Doctor Blog', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
-          ..._blogArticles.map(
-            (article) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(article.category.toUpperCase(),
-                          style: Theme.of(context).textTheme.labelLarge),
-                      const SizedBox(height: 8),
-                      Text(article.title,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      Text('By ${article.authorName} • ${article.language}'),
-                      const SizedBox(height: 12),
-                      Text(article.summary),
-                      const SizedBox(height: 12),
-                      Text(article.body),
-                    ],
+          ..._blogArticles.expand(
+            (article) {
+              final campaigns = _matchingCampaignsForText(
+                placement: 'blog',
+                primaryText: article.title,
+                secondaryText: '${article.summary} ${article.body}',
+                category: article.category,
+                language: article.language,
+              ).take(1);
+              return <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(article.category.toUpperCase(),
+                              style: Theme.of(context).textTheme.labelLarge),
+                          const SizedBox(height: 8),
+                          Text(article.title,
+                              style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 8),
+                          Text('By ${article.authorName} • ${article.language}'),
+                          const SizedBox(height: 12),
+                          Text(article.summary),
+                          const SizedBox(height: 12),
+                          Text(article.body),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
+                for (final campaign in campaigns)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildSponsoredCard(
+                      context,
+                      campaign,
+                      label: 'Sponsored with this topic',
+                    ),
+                  ),
+              ];
+            },
           ),
           const SizedBox(height: 8),
         ],
         Text('Education Library', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
-        ..._education.map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(item.category.toUpperCase(),
-                        style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: 8),
-                    Text(item.title,
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    Text(item.summary),
-                    const SizedBox(height: 12),
-                    Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
-                  ],
+        ..._education.expand(
+          (item) {
+            final campaigns = _matchingCampaignsForText(
+              placement: 'education',
+              primaryText: item.title,
+              secondaryText: item.summary,
+              category: item.category,
+              language: item.language,
+            ).take(1);
+            return <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.category.toUpperCase(),
+                            style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        Text(item.title,
+                            style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 8),
+                        Text(item.summary),
+                        const SizedBox(height: 12),
+                        Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+              for (final campaign in campaigns)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildSponsoredCard(
+                    context,
+                    campaign,
+                    label: 'Sponsored resource',
+                  ),
+                ),
+            ];
+          },
         ),
       ],
     );
@@ -1490,35 +1811,56 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             if (questions.isEmpty)
               const Text('No threads in this section yet.')
             else
-              ...questions.map(
-                (question) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _QuestionCard(
-                    question: question,
-                    followUpLabel: _activeUser?.isDoctor == true
-                        ? 'Comment on Thread'
-                        : 'Add Follow-up',
-                    onEdit: _canEditQuestion(question)
-                        ? () => _startEditingQuestion(question)
-                        : null,
-                    onTogglePublic: _canEditQuestion(question)
-                        ? () => _toggleQuestionVisibility(question)
-                        : null,
-                    onDelete: _canEditQuestion(question)
-                        ? () => _deleteQuestion(question)
-                        : null,
-                    onRespond: _canRespondToQuestion(question)
-                        ? () => _openDoctorResponseDialog(question)
-                        : null,
-                    onAddFollowUp: _canAddFollowUp(question)
-                        ? () => _openThreadMessageDialog(question)
-                        : null,
-                    canModerateMessage: (message) =>
-                        _canModerateThreadMessage(question, message),
-                    onModerateMessage: (message, state) =>
-                        _moderateThreadMessage(question, message, state),
-                  ),
-                ),
+              ...questions.expand(
+                (question) {
+                  final campaigns = _matchingCampaignsForText(
+                    placement: 'question',
+                    primaryText: question.title,
+                    secondaryText:
+                        '${question.body} ${question.aiSummary} ${question.responses.map((item) => item.fullText).join(' ')}',
+                    category: question.headingGroup,
+                    language: question.language,
+                  ).take(1);
+                  return <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _QuestionCard(
+                        question: question,
+                        followUpLabel: _activeUser?.isDoctor == true
+                            ? 'Comment on Thread'
+                            : 'Add Follow-up',
+                        onEdit: _canEditQuestion(question)
+                            ? () => _startEditingQuestion(question)
+                            : null,
+                        onTogglePublic: _canEditQuestion(question)
+                            ? () => _toggleQuestionVisibility(question)
+                            : null,
+                        onDelete: _canEditQuestion(question)
+                            ? () => _deleteQuestion(question)
+                            : null,
+                        onRespond: _canRespondToQuestion(question)
+                            ? () => _openDoctorResponseDialog(question)
+                            : null,
+                        onAddFollowUp: _canAddFollowUp(question)
+                            ? () => _openThreadMessageDialog(question)
+                            : null,
+                        canModerateMessage: (message) =>
+                            _canModerateThreadMessage(question, message),
+                        onModerateMessage: (message, state) =>
+                            _moderateThreadMessage(question, message, state),
+                      ),
+                    ),
+                    for (final campaign in campaigns)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildSponsoredCard(
+                          context,
+                          campaign,
+                          label: 'Sponsored resource',
+                        ),
+                      ),
+                  ];
+                },
               ),
           ],
         ),
@@ -1539,7 +1881,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                 Text('Settings', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<MedicoHubThemePreset>(
-                  initialValue: widget.themePreset,
+                  initialValue: widget.themeConfig.preset,
                   decoration: const InputDecoration(labelText: 'App theme'),
                   items: MedicoHubThemePreset.values
                       .map(
@@ -1551,12 +1893,42 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                       .toList(),
                   onChanged: (value) {
                     if (value != null) {
-                      widget.onThemeChanged(value);
+                      _applyThemeSelection(preset: value);
                     }
                   },
                 ),
+                if (widget.themeConfig.preset == MedicoHubThemePreset.custom) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _themeHexController,
+                    decoration: const InputDecoration(
+                      labelText: 'Custom accent HEX',
+                      helperText: 'Use #RRGGBB or #AARRGGBB',
+                    ),
+                    onSubmitted: (value) {
+                      _applyThemeSelection(
+                        preset: MedicoHubThemePreset.custom,
+                        customHex: value,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    value: _customThemeDarkMode,
+                    onChanged: (value) {
+                      setState(() => _customThemeDarkMode = value);
+                      _applyThemeSelection(
+                        preset: MedicoHubThemePreset.custom,
+                        customHex: _themeHexController.text,
+                        customDarkMode: value,
+                      );
+                    },
+                    title: const Text('Use dark surfaces for custom theme'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
                 const SizedBox(height: 12),
-                Text('Current app version: ${UpdateService.currentVersion}'),
+                Text('Current app version: $_currentVersion'),
                 const SizedBox(height: 8),
                 const Text(
                   'Next planned modules: blog posts, threaded comments, moderation tools, email notifications, WhatsApp notifications, and translation delivery.',
@@ -1571,6 +1943,79 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
                 const SizedBox(height: 8),
                 const Text(
                   'Android testing: run the app on a phone with --dart-define=MEDICOHUB_API_BASE_URL=http://YOUR-LAN-IP:8012 so speech-to-text keyboards can be exercised on-device.',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Updates',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<UpdateCheckFrequency>(
+                  initialValue: _updateFrequency,
+                  decoration:
+                      const InputDecoration(labelText: 'Check for updates'),
+                  items: UpdateCheckFrequency.values
+                      .map(
+                        (value) => DropdownMenuItem<UpdateCheckFrequency>(
+                          value: value,
+                          child: Text(value.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => _updateFrequency = value);
+                    unawaited(_persistUpdatePreferences());
+                  },
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  value: _updateAutoOpen,
+                  onChanged: (value) {
+                    setState(() => _updateAutoOpen = value);
+                    unawaited(_persistUpdatePreferences());
+                  },
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Auto-open update download when detected'),
+                  subtitle: const Text(
+                    'Useful for Android APK updates. Windows still requires normal download/extract steps.',
+                  ),
+                ),
+                if (_updateInfo != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Latest available: ${_updateInfo!.latestVersion}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._updateInfo!.releaseNotes.map(
+                    (note) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $note'),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _checkForUpdatesNow,
+                      child: const Text('Check Now'),
+                    ),
+                    if (_updateInfo != null)
+                      FilledButton(
+                        onPressed: _openUpdateDownload,
+                        child: Text(
+                          Platform.isAndroid ? 'Download APK' : 'Open Update',
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -1698,6 +2143,164 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
             ),
           ),
         ),
+        if (user.isAdmin) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sponsored Content',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Create subtle sponsored cards that are matched to blog topics and the health terms used in question-and-answer threads.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _adSponsorController,
+                    decoration:
+                        const InputDecoration(labelText: 'Sponsor label'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adTitleController,
+                    decoration:
+                        const InputDecoration(labelText: 'Ad headline'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adSubtitleController,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Short description'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adUrlController,
+                    decoration:
+                        const InputDecoration(labelText: 'Target URL'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adCtaController,
+                    decoration: const InputDecoration(labelText: 'CTA label'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adKeywordsController,
+                    decoration: const InputDecoration(
+                      labelText: 'Keywords',
+                      helperText:
+                          'Comma-separated terms such as stroke, migraine, tremor, diabetes',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adCategoriesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Categories',
+                      helperText:
+                          'Optional comma-separated categories like Neurology or General',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedAdPlacement,
+                    decoration:
+                        const InputDecoration(labelText: 'Placement'),
+                    items: _adPlacements
+                        .map(
+                          (placement) => DropdownMenuItem<String>(
+                            value: placement,
+                            child: Text(placement),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedAdPlacement = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedAdLanguage,
+                    decoration:
+                        const InputDecoration(labelText: 'Language focus'),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: 'All',
+                        child: Text('All languages'),
+                      ),
+                      ..._languageLocales.keys.map(
+                        (language) => DropdownMenuItem<String>(
+                          value: language,
+                          child: Text(language),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedAdLanguage = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _adPriorityController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Priority',
+                      helperText: 'Higher numbers appear first',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _createAdCampaign,
+                    child: const Text('Create Sponsored Card'),
+                  ),
+                  if (_adCampaigns.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Current sponsored cards',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    ..._adCampaigns.take(8).map(
+                      (campaign) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(campaign.title),
+                        subtitle: Text(
+                          '${campaign.sponsorName} • ${campaign.placements.join(', ')} • priority ${campaign.priority}',
+                        ),
+                        trailing: Wrap(
+                          spacing: 8,
+                          children: [
+                            Chip(
+                              label: Text(
+                                campaign.active ? 'Active' : 'Paused',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _toggleAdCampaignActive(campaign),
+                              child: Text(
+                                campaign.active ? 'Pause' : 'Resume',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
         if (_canManageDoctorDirectory) ...[
           const SizedBox(height: 16),
           Card(
@@ -2504,6 +3107,167 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage> {
         return 'Prepared';
       default:
         return item.status;
+    }
+  }
+
+  void _applyThemeSelection({
+    required MedicoHubThemePreset preset,
+    String? customHex,
+    bool? customDarkMode,
+  }) {
+    final hex = normalizeHexColor(customHex ?? _themeHexController.text);
+    final nextConfig = MedicoHubThemeConfig(
+      preset: preset,
+      customSeedHex: hex.isEmpty ? widget.themeConfig.customSeedHex : hex,
+      customDarkMode: customDarkMode ?? _customThemeDarkMode,
+    );
+    _themeHexController.text = nextConfig.customSeedHex;
+    _customThemeDarkMode = nextConfig.customDarkMode;
+    widget.onThemeChanged(nextConfig);
+    unawaited(_persistThemePreferences(nextConfig));
+    setState(() {
+      _voiceStatus = preset == MedicoHubThemePreset.custom
+          ? 'Custom theme applied with seed ${nextConfig.customSeedHex}.'
+          : '${preset.label} theme applied.';
+    });
+  }
+
+  List<String> _parseCsv(String raw) => raw
+      .split(',')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+
+  List<AdCampaign> _matchingCampaignsForText({
+    required String placement,
+    required String primaryText,
+    String secondaryText = '',
+    String category = '',
+    String language = '',
+  }) {
+    final haystack =
+        '$primaryText $secondaryText $category $language'.toLowerCase();
+    final categoryLower = category.toLowerCase();
+    final languageLower = language.toLowerCase();
+    final campaigns = _adCampaigns.where((campaign) {
+      if (!campaign.active) {
+        return false;
+      }
+      if (!campaign.placements.contains(placement)) {
+        return false;
+      }
+      if (campaign.languages.isNotEmpty &&
+          !campaign.languages.any((item) => item.toLowerCase() == languageLower)) {
+        return false;
+      }
+      if (campaign.categories.isNotEmpty &&
+          !campaign.categories.any((item) => item.toLowerCase() == categoryLower)) {
+        return false;
+      }
+      if (campaign.keywords.isEmpty) {
+        return true;
+      }
+      return campaign.keywords.any((keyword) => haystack.contains(keyword.toLowerCase()));
+    }).toList()
+      ..sort((a, b) => b.priority.compareTo(a.priority));
+    return campaigns;
+  }
+
+  Future<void> _launchAdCampaign(AdCampaign campaign) async {
+    await _openExternalUrl(campaign.targetUrl);
+  }
+
+  Future<void> _createAdCampaign() async {
+    final user = _activeUser;
+    if (user == null || !user.isAdmin) {
+      return;
+    }
+    if (_adTitleController.text.trim().isEmpty ||
+        _adSubtitleController.text.trim().isEmpty ||
+        _adUrlController.text.trim().isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter an ad title, subtitle, and target URL.';
+      });
+      return;
+    }
+    try {
+      final created = await _api.createAdCampaign(
+        actorId: user.id,
+        sponsorName: _adSponsorController.text.trim().isEmpty
+            ? 'Sponsored'
+            : _adSponsorController.text.trim(),
+        title: _adTitleController.text.trim(),
+        subtitle: _adSubtitleController.text.trim(),
+        ctaLabel: _adCtaController.text.trim().isEmpty
+            ? 'Learn more'
+            : _adCtaController.text.trim(),
+        targetUrl: _adUrlController.text.trim(),
+        keywords: _parseCsv(_adKeywordsController.text),
+        categories: _parseCsv(_adCategoriesController.text),
+        placements: <String>[_selectedAdPlacement],
+        languages: _selectedAdLanguage == 'All'
+            ? const []
+            : <String>[_selectedAdLanguage],
+        priority: int.tryParse(_adPriorityController.text.trim()) ?? 50,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adCampaigns = <AdCampaign>[created, ..._adCampaigns]
+          ..sort((a, b) => b.priority.compareTo(a.priority));
+        _adSponsorController.clear();
+        _adTitleController.clear();
+        _adSubtitleController.clear();
+        _adUrlController.clear();
+        _adKeywordsController.clear();
+        _adCategoriesController.clear();
+        _adCtaController.text = 'Learn more';
+        _adPriorityController.text = '50';
+        _selectedAdPlacement = 'home';
+        _selectedAdLanguage = 'English';
+        _voiceStatus = 'Sponsored card created successfully.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'Could not create sponsored card: $error';
+      });
+    }
+  }
+
+  Future<void> _toggleAdCampaignActive(AdCampaign campaign) async {
+    final user = _activeUser;
+    if (user == null || !user.isAdmin) {
+      return;
+    }
+    try {
+      final updated = await _api.updateAdCampaign(
+        campaignId: campaign.id,
+        actorId: user.id,
+        active: !campaign.active,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _adCampaigns = _adCampaigns
+            .map((item) => item.id == campaign.id ? updated : item)
+            .toList()
+          ..sort((a, b) => b.priority.compareTo(a.priority));
+        _voiceStatus = updated.active
+            ? 'Sponsored card activated.'
+            : 'Sponsored card paused.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'Could not update sponsored card: $error';
+      });
     }
   }
 

@@ -504,19 +504,88 @@ class UpdateInfo {
     required this.latestVersion,
     required this.downloadUrl,
     required this.releaseNotes,
+    this.releasePageUrl,
+    this.windowsDownloadUrl,
+    this.androidDownloadUrl,
+    this.iosStoreUrl,
   });
 
   final String latestVersion;
   final String downloadUrl;
   final List<String> releaseNotes;
+  final String? releasePageUrl;
+  final String? windowsDownloadUrl;
+  final String? androidDownloadUrl;
+  final String? iosStoreUrl;
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
     return UpdateInfo(
       latestVersion: json['latest_version'] as String? ?? '',
       downloadUrl: json['download_url'] as String? ?? '',
+      releasePageUrl: json['release_page_url'] as String?,
+      windowsDownloadUrl: json['windows_download_url'] as String?,
+      androidDownloadUrl: json['android_download_url'] as String?,
+      iosStoreUrl: json['ios_store_url'] as String?,
       releaseNotes: (json['release_notes'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+    );
+  }
+}
+
+class AdCampaign {
+  const AdCampaign({
+    required this.id,
+    required this.sponsorName,
+    required this.title,
+    required this.subtitle,
+    required this.ctaLabel,
+    required this.targetUrl,
+    required this.keywords,
+    required this.categories,
+    required this.placements,
+    required this.languages,
+    required this.priority,
+    required this.active,
+    required this.createdBy,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String sponsorName;
+  final String title;
+  final String subtitle;
+  final String ctaLabel;
+  final String targetUrl;
+  final List<String> keywords;
+  final List<String> categories;
+  final List<String> placements;
+  final List<String> languages;
+  final int priority;
+  final bool active;
+  final String createdBy;
+  final String updatedAt;
+
+  factory AdCampaign.fromJson(Map<String, dynamic> json) {
+    List<String> stringList(String key) => (json[key] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .toList();
+
+    return AdCampaign(
+      id: json['id'] as String? ?? '',
+      sponsorName: json['sponsor_name'] as String? ?? 'Sponsored',
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      ctaLabel: json['cta_label'] as String? ?? 'Learn more',
+      targetUrl: json['target_url'] as String? ?? '',
+      keywords: stringList('keywords'),
+      categories: stringList('categories'),
+      placements: stringList('placements'),
+      languages: stringList('languages'),
+      priority: json['priority'] as int? ?? 50,
+      active: json['active'] as bool? ?? true,
+      createdBy: json['created_by'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
     );
   }
 }

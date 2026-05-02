@@ -110,6 +110,19 @@ class Repository(ABC):
         moderation_state: str,
     ) -> dict[str, Any] | None: ...
 
+    @abstractmethod
+    def list_ad_campaigns(self) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def create_ad_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def update_ad_campaign(
+        self,
+        campaign_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None: ...
+
 
 class LocalJsonRepository(Repository):
     def _db(self) -> dict[str, Any]:
@@ -306,6 +319,28 @@ class LocalJsonRepository(Repository):
                     message["moderation_state"] = moderation_state
                     save_db(db)
                     return message
+        return None
+
+    def list_ad_campaigns(self) -> list[dict[str, Any]]:
+        return self._db()["ad_campaigns"]
+
+    def create_ad_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db["ad_campaigns"].append(campaign)
+        save_db(db)
+        return campaign
+
+    def update_ad_campaign(
+        self,
+        campaign_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        db = self._db()
+        for campaign in db["ad_campaigns"]:
+            if campaign["id"] == campaign_id:
+                campaign.update(updates)
+                save_db(db)
+                return campaign
         return None
 
 
@@ -521,6 +556,27 @@ class FirestoreRepository(Repository):
                 ref.set(question)
                 return message
         return None
+
+    def list_ad_campaigns(self) -> list[dict[str, Any]]:
+        return [self._decode(doc.to_dict()) for doc in self._collection("ad_campaigns").stream()]
+
+    def create_ad_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        self._collection("ad_campaigns").document(campaign["id"]).set(campaign)
+        return campaign
+
+    def update_ad_campaign(
+        self,
+        campaign_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        ref = self._collection("ad_campaigns").document(campaign_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        current = self._decode(snap.to_dict())
+        current.update(updates)
+        ref.set(current)
+        return current
 
     def _decode(self, value: Any) -> Any:
         if isinstance(value, datetime):

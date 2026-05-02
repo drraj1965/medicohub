@@ -74,6 +74,17 @@ class AppApiService {
         .toList();
   }
 
+  Future<List<AdCampaign>> fetchAdCampaigns() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/ad-campaigns'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'ad campaigns');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => AdCampaign.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<List<TitleTemplate>> fetchTitleTemplates() async {
     final response = await _client
         .get(Uri.parse('$_baseUrl/title-templates'))
@@ -217,6 +228,61 @@ class AppApiService {
     );
     _ensureSuccess(response, 'update notification settings');
     return NotificationSettings.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<AdCampaign> createAdCampaign({
+    required String actorId,
+    required String sponsorName,
+    required String title,
+    required String subtitle,
+    required String ctaLabel,
+    required String targetUrl,
+    required List<String> keywords,
+    required List<String> categories,
+    required List<String> placements,
+    required List<String> languages,
+    required int priority,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/ad-campaigns'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'sponsor_name': sponsorName,
+        'title': title,
+        'subtitle': subtitle,
+        'cta_label': ctaLabel,
+        'target_url': targetUrl,
+        'keywords': keywords,
+        'categories': categories,
+        'placements': placements,
+        'languages': languages,
+        'priority': priority,
+      }),
+    );
+    _ensureSuccess(response, 'create ad campaign');
+    return AdCampaign.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<AdCampaign> updateAdCampaign({
+    required String campaignId,
+    required String actorId,
+    bool? active,
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$_baseUrl/ad-campaigns/$campaignId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        if (active != null) 'active': active,
+      }),
+    );
+    _ensureSuccess(response, 'update ad campaign');
+    return AdCampaign.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
