@@ -23,11 +23,21 @@ try {
     throw "Windows release build finished, but medicohub.exe was not found at $exePath"
   }
 
-  $backendExe = Join-Path $projectRoot "artifacts\backend_dist\medicohub_backend\medicohub_backend.exe"
+  $backendDistDir = Join-Path $projectRoot "artifacts\backend_dist\medicohub_backend"
+  $backendExe = Join-Path $backendDistDir "medicohub_backend.exe"
   if (!(Test-Path $backendExe)) {
     throw "Backend release build finished, but medicohub_backend.exe was not found at $backendExe"
   }
-  Copy-Item $backendExe (Join-Path $releaseDir "medicohub_backend.exe") -Force
+
+  $packagedBackendExe = Join-Path $releaseDir "medicohub_backend.exe"
+  $packagedBackendInternalDir = Join-Path $releaseDir "_internal"
+  if (Test-Path $packagedBackendExe) {
+    Remove-Item $packagedBackendExe -Force
+  }
+  if (Test-Path $packagedBackendInternalDir) {
+    Remove-Item $packagedBackendInternalDir -Recurse -Force
+  }
+  Copy-Item (Join-Path $backendDistDir "*") $releaseDir -Recurse -Force
 
   $pubspecPath = Join-Path $frontendRoot "pubspec.yaml"
   $pubspec = Get-Content $pubspecPath -Raw
