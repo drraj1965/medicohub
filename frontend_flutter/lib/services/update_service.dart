@@ -53,7 +53,7 @@ extension UpdateCheckFrequencyLabel on UpdateCheckFrequency {
 class UpdateService {
   UpdateService({http.Client? client}) : _client = client ?? http.Client();
 
-  static const String currentVersion = '1.3.0';
+  static const String currentVersion = '1.3.1';
   static const String updateUrl =
       'https://raw.githubusercontent.com/drraj1965/medicohub/main/update.json';
   static const String preferenceFrequencyKey = 'update_frequency';

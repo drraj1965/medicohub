@@ -14,11 +14,14 @@ try:
         AdCampaignCreate,
         AdCampaignRecord,
         AdCampaignUpdate,
+        AppSettings,
+        AppSettingsUpdate,
         AttachmentCreate,
         AttachmentRecord,
         AuditEvent,
         BlogArticleCreate,
         BlogArticleRecord,
+        DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
         DoctorResponseRecord,
@@ -54,11 +57,14 @@ except ImportError:
         AdCampaignCreate,
         AdCampaignRecord,
         AdCampaignUpdate,
+        AppSettings,
+        AppSettingsUpdate,
         AttachmentCreate,
         AttachmentRecord,
         AuditEvent,
         BlogArticleCreate,
         BlogArticleRecord,
+        DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
         DoctorResponseRecord,
@@ -406,6 +412,63 @@ def update_notification_settings(payload: NotificationSettingsUpdate) -> dict:
     return updated
 
 
+def get_app_settings() -> dict:
+    existing = repository.get_app_settings()
+    if existing:
+        if not existing.get("question_topics"):
+            existing["question_topics"] = list(DEFAULT_QUESTION_TOPICS)
+            repository.upsert_app_settings(existing)
+        return existing
+    default_settings = AppSettings(updated_by="system").model_dump(mode="json")
+    repository.upsert_app_settings(default_settings)
+    return default_settings
+
+
+def update_app_settings(payload: AppSettingsUpdate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can update app settings.")
+
+    current = get_app_settings()
+    next_topics = current.get("question_topics", list(DEFAULT_QUESTION_TOPICS))
+    if payload.question_topics is not None:
+        cleaned_topics: list[str] = []
+        for item in payload.question_topics:
+            topic = item.strip()
+            if topic and topic not in cleaned_topics:
+                cleaned_topics.append(topic)
+        next_topics = cleaned_topics or list(DEFAULT_QUESTION_TOPICS)
+
+    next_disclaimers = current.get("disclaimer_documents", {})
+    if payload.disclaimer_documents is not None:
+        next_disclaimers = {
+            language.strip() or "English": {
+                "title": document.title.strip(),
+                "body": document.body.strip(),
+            }
+            for language, document in payload.disclaimer_documents.items()
+            if language.strip() and document.title.strip() and document.body.strip()
+        } or next_disclaimers
+
+    updated = AppSettings(
+        question_topics=next_topics,
+        disclaimer_documents=next_disclaimers,
+        default_region_note=(
+            payload.default_region_note.strip()
+            if payload.default_region_note and payload.default_region_note.strip()
+            else current.get("default_region_note")
+            or "This notice is educational and operational. It is not a substitute for country-specific legal advice."
+        ),
+        updated_by=payload.actor_id,
+        updated_at=utc_now(),
+    ).model_dump(mode="json")
+    repository.upsert_app_settings(updated)
+    emit_audit("app_settings", updated["id"], "updated", payload.actor_id, updated)
+    return updated
+
+
 def list_ad_campaigns() -> list[dict]:
     campaigns = repository.list_ad_campaigns()
     return sorted(
@@ -663,6 +726,7 @@ def seed_if_needed() -> None:
             )
 
     repository.upsert_notification_settings(get_notification_settings())
+    repository.upsert_app_settings(get_app_settings())
 
 
 def should_seed_demo_data() -> bool:

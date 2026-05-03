@@ -27,6 +27,74 @@ class ConsentRecord(BaseModel):
     )
 
 
+DEFAULT_QUESTION_TOPICS = [
+    "Related to my condition",
+    "Related to my medications",
+    "Related to my test results",
+    "General",
+]
+
+
+DEFAULT_DISCLAIMER_TRANSLATIONS = {
+    "English": {
+        "title": "MedicoHub Educational Use Notice",
+        "body": (
+            "MedicoHub is an educational discussion platform. It does not provide "
+            "diagnosis, prescriptions, emergency triage, or a substitute for direct medical care. "
+            "Questions, answers, comments, and uploaded reports may be reviewed for service quality, "
+            "moderation, and notification delivery. If you have severe symptoms, new weakness, chest pain, "
+            "breathing difficulty, seizures, self-harm thoughts, or any emergency, contact your local emergency services immediately."
+        ),
+    },
+    "Arabic": {
+        "title": "إشعار الاستخدام التعليمي في MedicoHub",
+        "body": (
+            "منصة MedicoHub مخصصة للتثقيف والنقاش فقط. لا تقدم تشخيصًا أو وصفات دوائية أو فرزًا للحالات الطارئة، "
+            "ولا تُعد بديلًا عن الرعاية الطبية المباشرة. قد تتم مراجعة الأسئلة والأجوبة والتعليقات والملفات المرفوعة "
+            "لأغراض الجودة والإشراف وإرسال الإشعارات. إذا كانت لديك أعراض شديدة أو ضعف جديد أو ألم في الصدر أو صعوبة "
+            "في التنفس أو نوبات أو أفكار لإيذاء النفس أو أي حالة طارئة، فاتصل بخدمات الطوارئ المحلية فورًا."
+        ),
+    },
+    "Hindi": {
+        "title": "MedicoHub शैक्षिक उपयोग सूचना",
+        "body": (
+            "MedicoHub केवल शैक्षिक चर्चा मंच है। यह निदान, दवा की पर्ची, आपातकालीन ट्रायेज या प्रत्यक्ष चिकित्सा देखभाल "
+            "का विकल्प प्रदान नहीं करता। प्रश्न, उत्तर, टिप्पणियां और अपलोड की गई रिपोर्टें गुणवत्ता, मॉडरेशन और "
+            "नोटिफिकेशन डिलीवरी के लिए देखी जा सकती हैं। यदि आपको गंभीर लक्षण, नई कमजोरी, सीने में दर्द, सांस लेने में "
+            "दिक्कत, दौरे, स्वयं को नुकसान पहुंचाने के विचार या कोई आपात स्थिति हो, तो तुरंत अपनी स्थानीय आपातकालीन सेवाओं से संपर्क करें।"
+        ),
+    },
+    "French": {
+        "title": "Avis d'utilisation éducative MedicoHub",
+        "body": (
+            "MedicoHub est une plateforme de discussion à visée éducative. Elle ne fournit ni diagnostic, ni prescription, "
+            "ni triage d'urgence, et ne remplace pas une consultation médicale directe. Les questions, réponses, commentaires "
+            "et documents téléversés peuvent être examinés pour la qualité du service, la modération et l'envoi de notifications. "
+            "En cas de symptômes graves, nouvelle faiblesse, douleur thoracique, difficulté respiratoire, crise, idées suicidaires "
+            "ou toute urgence, contactez immédiatement les services d'urgence locaux."
+        ),
+    },
+    "Spanish": {
+        "title": "Aviso de uso educativo de MedicoHub",
+        "body": (
+            "MedicoHub es una plataforma de discusión con fines educativos. No ofrece diagnóstico, recetas, triaje de urgencias "
+            "ni sustituye la atención médica directa. Las preguntas, respuestas, comentarios y archivos cargados pueden revisarse "
+            "para calidad del servicio, moderación y envío de notificaciones. Si tiene síntomas graves, nueva debilidad, dolor en el pecho, "
+            "dificultad para respirar, convulsiones, pensamientos de autolesión o cualquier emergencia, contacte de inmediato a los servicios "
+            "de emergencia locales."
+        ),
+    },
+    "Mandarin": {
+        "title": "MedicoHub 教育用途声明",
+        "body": (
+            "MedicoHub 是一个教育性讨论平台，不提供诊断、处方、急诊分诊，也不能替代面对面的医疗服务。"
+            "问题、回答、评论和上传的报告可能会被查看，用于服务质量、内容管理和通知发送。"
+            "如果您出现严重症状、新发无力、胸痛、呼吸困难、癫痫发作、自伤想法或任何紧急情况，请立即联系当地急救服务。"
+        ),
+    },
+}
+
+
 class User(BaseModel):
     id: str = Field(default_factory=lambda: make_id("usr"))
     email: str
@@ -137,12 +205,7 @@ class QuestionCreate(BaseModel):
     author_id: str
     target_doctor_id: str
     type: Literal["forum", "second_opinion"] = "forum"
-    heading_group: Literal[
-        "Related to my condition",
-        "Related to my medications",
-        "Related to my test results",
-        "General",
-    ] = "General"
+    heading_group: str = "General"
     title: str
     body: str
     tags: list[str] = Field(default_factory=list)
@@ -158,12 +221,7 @@ class QuestionUpdateRequest(BaseModel):
     actor_id: str
     title: str | None = None
     body: str | None = None
-    heading_group: Literal[
-        "Related to my condition",
-        "Related to my medications",
-        "Related to my test results",
-        "General",
-    ] | None = None
+    heading_group: str | None = None
     language: str | None = None
     symptoms_summary: str | None = None
     is_public: bool | None = None
@@ -279,6 +337,34 @@ class NotificationSettingsUpdate(BaseModel):
     email_status_note: str = "Email notifications are coming later."
 
 
+class DisclaimerDocument(BaseModel):
+    title: str
+    body: str
+
+
+class AppSettings(BaseModel):
+    id: str = "app_settings"
+    question_topics: list[str] = Field(default_factory=lambda: list(DEFAULT_QUESTION_TOPICS))
+    disclaimer_documents: dict[str, DisclaimerDocument] = Field(
+        default_factory=lambda: {
+            language: DisclaimerDocument(**document)
+            for language, document in DEFAULT_DISCLAIMER_TRANSLATIONS.items()
+        }
+    )
+    default_region_note: str = (
+        "This notice is educational and operational. It is not a substitute for country-specific legal advice."
+    )
+    updated_by: str = "system"
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class AppSettingsUpdate(BaseModel):
+    actor_id: str
+    question_topics: list[str] | None = None
+    disclaimer_documents: dict[str, DisclaimerDocument] | None = None
+    default_region_note: str | None = None
+
+
 class AdCampaignRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("ad"))
     sponsor_name: str = "Sponsored"
@@ -335,12 +421,7 @@ class QuestionRecord(BaseModel):
     author_id: str
     target_doctor_id: str
     type: Literal["forum", "second_opinion"] = "forum"
-    heading_group: Literal[
-        "Related to my condition",
-        "Related to my medications",
-        "Related to my test results",
-        "General",
-    ] = "General"
+    heading_group: str = "General"
     title: str
     body: str
     tags: list[str] = Field(default_factory=list)

@@ -7,6 +7,7 @@ try:
     from .models import (
         AdCampaignCreate,
         AdCampaignUpdate,
+        AppSettingsUpdate,
         AttachmentCreate,
         AuthRequest,
         AuthResponse,
@@ -36,6 +37,7 @@ try:
         invite_doctor,
         create_payment_intent,
         create_question,
+        get_app_settings,
         get_notification_settings,
         create_title_template,
         get_user_profile,
@@ -56,6 +58,7 @@ try:
         seed_if_needed,
         should_seed_demo_data,
         update_ad_campaign,
+        update_app_settings,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -66,6 +69,7 @@ except ImportError:
     from models import (  # type: ignore
         AdCampaignCreate,
         AdCampaignUpdate,
+        AppSettingsUpdate,
         AttachmentCreate,
         AuthRequest,
         AuthResponse,
@@ -95,6 +99,7 @@ except ImportError:
         invite_doctor,
         create_payment_intent,
         create_question,
+        get_app_settings,
         get_notification_settings,
         create_title_template,
         get_user_profile,
@@ -115,6 +120,7 @@ except ImportError:
         seed_if_needed,
         should_seed_demo_data,
         update_ad_campaign,
+        update_app_settings,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -123,7 +129,7 @@ except ImportError:
     from storage import read_audit  # type: ignore
 
 
-app = FastAPI(title="MedicoHub Backend", version="1.3.0")
+app = FastAPI(title="MedicoHub Backend", version="1.3.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -298,6 +304,16 @@ def notification_settings() -> dict:
 @app.post("/notification-settings")
 def save_notification_settings(payload: NotificationSettingsUpdate) -> dict:
     return update_notification_settings(payload)
+
+
+@app.get("/app-settings")
+def app_settings() -> dict:
+    return get_app_settings()
+
+
+@app.post("/app-settings")
+def save_app_settings(payload: AppSettingsUpdate) -> dict:
+    return update_app_settings(payload)
 
 
 @app.get("/education/library")

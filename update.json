@@ -1,12 +1,12 @@
 {
-  "latest_version": "1.3.0",
-  "download_url": "https://github.com/drraj1965/medicohub/releases/tag/v1.3.0",
-  "release_page_url": "https://github.com/drraj1965/medicohub/releases/tag/v1.3.0",
-  "windows_download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.3.0/medicohub-windows-v1.3.0-portable.zip",
-  "android_download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.3.0/medicohub-android-v1.3.0-public-beta.apk",
+  "latest_version": "1.3.1",
+  "download_url": "https://github.com/drraj1965/medicohub/releases/tag/v1.3.1",
+  "release_page_url": "https://github.com/drraj1965/medicohub/releases/tag/v1.3.1",
+  "windows_download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.3.1/medicohub-windows-v1.3.1-portable.zip",
+  "android_download_url": "https://github.com/drraj1965/medicohub/releases/download/v1.3.1/medicohub-android-v1.3.1-public-beta.apk",
   "release_notes": [
-    "Configurable update checks and one-tap release downloads are now built into Settings.",
-    "Themes now include more presets plus custom HEX accent colors with light or dark custom surfaces.",
-    "Context-aware sponsored cards can now be created by admins and matched to blog topics and question terms."
+    "Custom theme HEX entry is now safer, with palette chips and invalid-value protection.",
+    "Question browsing now includes My Questions and Public Questions tabs plus topic/date filters.",
+    "Android public-backend build now includes AdMob banner and app-open ad support with gentler user-facing copy."
   ]
 }

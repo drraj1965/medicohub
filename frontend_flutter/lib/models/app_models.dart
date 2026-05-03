@@ -130,6 +130,57 @@ class TitleTemplate {
   }
 }
 
+class DisclaimerDocument {
+  const DisclaimerDocument({
+    required this.title,
+    required this.body,
+  });
+
+  final String title;
+  final String body;
+
+  factory DisclaimerDocument.fromJson(Map<String, dynamic> json) {
+    return DisclaimerDocument(
+      title: json['title'] as String? ?? '',
+      body: json['body'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'body': body,
+      };
+}
+
+class AppSettings {
+  const AppSettings({
+    required this.questionTopics,
+    required this.disclaimerDocuments,
+    required this.defaultRegionNote,
+  });
+
+  final List<String> questionTopics;
+  final Map<String, DisclaimerDocument> disclaimerDocuments;
+  final String defaultRegionNote;
+
+  factory AppSettings.fromJson(Map<String, dynamic> json) {
+    final disclaimers = json['disclaimer_documents'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    return AppSettings(
+      questionTopics: (json['question_topics'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      disclaimerDocuments: disclaimers.map(
+        (key, value) => MapEntry(
+          key,
+          DisclaimerDocument.fromJson(value as Map<String, dynamic>),
+        ),
+      ),
+      defaultRegionNote: json['default_region_note'] as String? ?? '',
+    );
+  }
+}
+
 class ForumQuestion {
   const ForumQuestion({
     required this.id,

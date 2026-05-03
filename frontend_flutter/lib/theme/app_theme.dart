@@ -1,5 +1,21 @@
 import 'package:flutter/material.dart';
 
+const String kDefaultCustomThemeHex = '#4F8C73';
+const List<String> kThemeHexPalette = <String>[
+  '#4F8C73',
+  '#2A7DB8',
+  '#C95B86',
+  '#CB8A18',
+  '#8570D6',
+  '#5A6D7C',
+  '#0F9D58',
+  '#FF6F61',
+  '#006D77',
+  '#8E24AA',
+  '#D97706',
+  '#1F2937',
+];
+
 enum MedicoHubThemePreset {
   dark,
   light,
@@ -40,7 +56,7 @@ extension MedicoHubThemePresetLabel on MedicoHubThemePreset {
 class MedicoHubThemeConfig {
   const MedicoHubThemeConfig({
     required this.preset,
-    this.customSeedHex = '#4F8C73',
+    this.customSeedHex = kDefaultCustomThemeHex,
     this.customDarkMode = false,
   });
 
@@ -136,7 +152,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
         fieldColor: const Color(0xFF24303A),
       );
     case MedicoHubThemePreset.custom:
-      final seed = parseHexColor(config.customSeedHex) ?? const Color(0xFF4F8C73);
+      final seed = safeThemeSeedColor(config.customSeedHex);
       final dark = config.customDarkMode;
       return _buildTheme(
         seed: seed,
@@ -153,7 +169,9 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
 
 String normalizeHexColor(String raw) {
   final cleaned = raw.trim().replaceAll('#', '').toUpperCase();
-  if (cleaned.length == 6 || cleaned.length == 8) {
+  final hexPattern = RegExp(r'^[0-9A-F]+$');
+  if ((cleaned.length == 6 || cleaned.length == 8) &&
+      hexPattern.hasMatch(cleaned)) {
     return '#$cleaned';
   }
   return '';
@@ -164,13 +182,21 @@ Color? parseHexColor(String raw) {
   if (normalized.isEmpty) {
     return null;
   }
-  final value = normalized.substring(1);
-  final buffer = StringBuffer();
-  if (value.length == 6) {
-    buffer.write('FF');
+  try {
+    final value = normalized.substring(1);
+    final buffer = StringBuffer();
+    if (value.length == 6) {
+      buffer.write('FF');
+    }
+    buffer.write(value);
+    return Color(int.parse(buffer.toString(), radix: 16));
+  } catch (_) {
+    return null;
   }
-  buffer.write(value);
-  return Color(int.parse(buffer.toString(), radix: 16));
+}
+
+Color safeThemeSeedColor(String raw) {
+  return parseHexColor(raw) ?? const Color(0xFF4F8C73);
 }
 
 ThemeData _buildTheme({

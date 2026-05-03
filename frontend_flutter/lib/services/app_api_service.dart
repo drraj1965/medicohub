@@ -208,6 +208,16 @@ class AppApiService {
     );
   }
 
+  Future<AppSettings> fetchAppSettings() async {
+    final response = await _client.get(
+      Uri.parse('$_baseUrl/app-settings'),
+    ).timeout(_requestTimeout);
+    _ensureSuccess(response, 'app settings');
+    return AppSettings.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<NotificationSettings> updateNotificationSettings({
     required String actorId,
     required bool whatsAppActivationEnabled,
@@ -228,6 +238,30 @@ class AppApiService {
     );
     _ensureSuccess(response, 'update notification settings');
     return NotificationSettings.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<AppSettings> updateAppSettings({
+    required String actorId,
+    required List<String> questionTopics,
+    required Map<String, DisclaimerDocument> disclaimerDocuments,
+    required String defaultRegionNote,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/app-settings'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'question_topics': questionTopics,
+        'disclaimer_documents': disclaimerDocuments.map(
+          (key, value) => MapEntry(key, value.toJson()),
+        ),
+        'default_region_note': defaultRegionNote,
+      }),
+    );
+    _ensureSuccess(response, 'update app settings');
+    return AppSettings.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
   }

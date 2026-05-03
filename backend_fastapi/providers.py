@@ -123,6 +123,12 @@ class Repository(ABC):
         updates: dict[str, Any],
     ) -> dict[str, Any] | None: ...
 
+    @abstractmethod
+    def get_app_settings(self) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def upsert_app_settings(self, settings: dict[str, Any]) -> dict[str, Any]: ...
+
 
 class LocalJsonRepository(Repository):
     def _db(self) -> dict[str, Any]:
@@ -342,6 +348,16 @@ class LocalJsonRepository(Repository):
                 save_db(db)
                 return campaign
         return None
+
+    def get_app_settings(self) -> dict[str, Any] | None:
+        settings = self._db().get("app_settings")
+        return settings if settings else None
+
+    def upsert_app_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db["app_settings"] = settings
+        save_db(db)
+        return settings
 
 
 class FirestoreRepository(Repository):
@@ -577,6 +593,16 @@ class FirestoreRepository(Repository):
         current.update(updates)
         ref.set(current)
         return current
+
+    def get_app_settings(self) -> dict[str, Any] | None:
+        snap = self._collection("app_config").document("app_settings").get()
+        if not snap.exists:
+            return None
+        return self._decode(snap.to_dict())
+
+    def upsert_app_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        self._collection("app_config").document("app_settings").set(settings)
+        return settings
 
     def _decode(self, value: Any) -> Any:
         if isinstance(value, datetime):
