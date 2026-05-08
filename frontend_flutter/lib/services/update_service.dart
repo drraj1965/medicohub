@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_models.dart';
@@ -53,7 +54,7 @@ extension UpdateCheckFrequencyLabel on UpdateCheckFrequency {
 class UpdateService {
   UpdateService({http.Client? client}) : _client = client ?? http.Client();
 
-  static const String currentVersion = '1.3.1';
+  static const String fallbackVersion = '0.0.0';
   static const String updateUrl =
       'https://raw.githubusercontent.com/drraj1965/medicohub/main/update.json';
   static const String preferenceFrequencyKey = 'update_frequency';
@@ -62,6 +63,17 @@ class UpdateService {
   static const String preferenceLastOpenedVersionKey = 'update_last_opened_version';
 
   final http.Client _client;
+
+  Future<String> currentVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      if (version.isNotEmpty) {
+        return version;
+      }
+    } catch (_) {}
+    return fallbackVersion;
+  }
 
   Future<UpdateInfo?> checkForUpdates({
     required String currentVersion,

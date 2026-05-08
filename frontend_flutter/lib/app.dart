@@ -210,7 +210,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String _inviteDoctorSpecialty = 'General Health';
   String? _editingQuestionId;
   String _articleCategory = 'General Health';
-  String _currentVersion = UpdateService.currentVersion;
+  String _currentVersion = UpdateService.fallbackVersion;
   UpdateCheckFrequency _updateFrequency = UpdateCheckFrequency.daily;
   _QuestionFeedScope _questionFeedScope = _QuestionFeedScope.mine;
   _QuestionDateFilter _questionDateFilter = _QuestionDateFilter.allTime;
@@ -316,7 +316,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       prefs = results[0];
       _loadThemePreferences(prefs);
       _loadUpdatePreferences(prefs);
-      const currentVersion = UpdateService.currentVersion;
+      final currentVersion = await _updateService.currentVersion();
       if (_updateService.shouldCheck(
         prefs: prefs,
         frequency: _updateFrequency,
@@ -342,7 +342,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       setState(() {
         _prefs = prefs;
         _updateInfo = updateInfo;
-        _currentVersion = UpdateService.currentVersion;
+        _currentVersion = UpdateService.fallbackVersion;
         _loading = false;
         _errorMessage = error.toString();
       });

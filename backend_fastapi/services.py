@@ -127,6 +127,7 @@ repository = _LazyRepository()
 file_storage = _LazyFileStorage()
 pdf_ingestion = PdfIngestionService()
 settings = get_settings()
+NOTIFICATION_REQUEST_TIMEOUT_SECONDS = 5
 
 ADMIN_SEED = [
     {
@@ -221,7 +222,7 @@ def _send_email_message(destination: str, subject: str, body: str) -> bool:
                 "subject": subject,
                 "content": [{"type": "text/plain", "value": body}],
             },
-            timeout=20,
+            timeout=NOTIFICATION_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         return True
@@ -238,7 +239,11 @@ def _send_email_message(destination: str, subject: str, body: str) -> bool:
     message["To"] = destination
     message["Subject"] = subject
     message.set_content(body)
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
+    with smtplib.SMTP(
+        settings.smtp_host,
+        settings.smtp_port,
+        timeout=NOTIFICATION_REQUEST_TIMEOUT_SECONDS,
+    ) as server:
         if settings.enable_smtp_tls:
             server.starttls()
         server.login(settings.smtp_username, settings.smtp_password)
@@ -265,7 +270,7 @@ def _send_sms_otp(destination: str, body: str) -> bool:
             "To": destination,
             "Body": body,
         },
-        timeout=20,
+        timeout=NOTIFICATION_REQUEST_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
     return True
@@ -292,7 +297,7 @@ def _send_whatsapp_message(destination: str, body: str) -> bool:
             "To": to_number,
             "Body": body,
         },
-        timeout=20,
+        timeout=NOTIFICATION_REQUEST_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
     return True
@@ -374,6 +379,26 @@ def _queue_notification_pair(
                 status="sent" if whatsapp_sent else "preview_ready",
             ).model_dump(mode="json")
         )
+
+
+def _safe_queue_notification_pair(
+    *,
+    event_type: str,
+    recipient: dict,
+    subject: str,
+    body: str,
+) -> None:
+    try:
+        _queue_notification_pair(
+            event_type=event_type,
+            recipient=recipient,
+            subject=subject,
+            body=body,
+        )
+    except Exception:
+        # Question delivery should not fail because downstream notification
+        # providers or notification persistence are temporarily unavailable.
+        return
 
 
 def get_notification_settings() -> dict:
@@ -745,6 +770,13 @@ def emit_audit(entity_type: str, entity_id: str, action: str, actor_id: str, pay
     )
 
 
+def safe_emit_audit(entity_type: str, entity_id: str, action: str, actor_id: str, payload: dict) -> None:
+    try:
+        emit_audit(entity_type, entity_id, action, actor_id, payload)
+    except Exception:
+        return
+
+
 def authenticate(email: str, password: str) -> dict:
     for user in repository.list_users():
         if _normalize_email(user["email"]) == _normalize_email(email) and user["password"] == password:
@@ -1010,19 +1042,19 @@ def create_question(payload: QuestionCreate) -> dict:
         f"Target doctor: {target_doctor.get('display_name')}\n\n"
         f"Question preview:\n{question['body'][:500]}"
     )
-    _queue_notification_pair(
+    _safe_queue_notification_pair(
         event_type="question_created",
         recipient=author,
         subject=subject,
         body=question_preview,
     )
-    _queue_notification_pair(
+    _safe_queue_notification_pair(
         event_type="question_created",
         recipient=target_doctor,
         subject=subject,
         body=question_preview,
     )
-    emit_audit("question", question["id"], "created", payload.author_id, question)
+    safe_emit_audit("question", question["id"], "created", payload.author_id, question)
     return _decorate_question(question)
 
 
