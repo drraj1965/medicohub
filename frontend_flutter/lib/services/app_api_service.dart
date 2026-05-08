@@ -13,6 +13,8 @@ class AppApiService {
   final http.Client _client;
   static final String _baseUrl = _resolveBaseUrl();
   static const Duration _requestTimeout = Duration(seconds: 8);
+  static const String _publicBackendUrl =
+      'https://medicohub-backend-u5i5.onrender.com';
 
   String get baseUrl => _baseUrl;
 
@@ -25,7 +27,13 @@ class AppApiService {
       return 'http://127.0.0.1:8012';
     }
     if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8012';
+      return kReleaseMode ? _publicBackendUrl : 'http://10.0.2.2:8012';
+    }
+    if (Platform.isIOS) {
+      return _publicBackendUrl;
+    }
+    if (Platform.isMacOS) {
+      return _publicBackendUrl;
     }
     return 'http://127.0.0.1:8012';
   }
