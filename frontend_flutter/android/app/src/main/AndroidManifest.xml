@@ -8,7 +8,7 @@
         android:networkSecurityConfig="@xml/network_security_config">
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-9639630926363418~7346408092" />
+            android:value="ca-app-pub-9639630926363418~8083138213" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -48,8 +48,8 @@ const Map<String, String> _languageLocales = <String, String>{
   'Bengali': 'bn-IN',
 };
 const List<String> _adPlacements = <String>['home', 'question', 'education', 'blog'];
-const String _androidBannerAdUnitId = 'ca-app-pub-9639630926363418/7255832194';
-const String _androidAppOpenAdUnitId = 'ca-app-pub-9639630926363418/3316587183';
+const String _androidBannerAdUnitId = 'ca-app-pub-9639630926363418/8715517435';
+const String _androidAppOpenAdUnitId = 'ca-app-pub-9639630926363418/3417519336';
 const String _iosBannerAdUnitId = 'ca-app-pub-9639630926363418/4253455835';
 const String _iosAppOpenAdUnitId = 'ca-app-pub-9639630926363418/8422205095';
 const String _androidTestBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
