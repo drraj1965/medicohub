@@ -975,21 +975,41 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ? null
             : () => setState(() => _tabIndex = 1),
         label: Text(_editingQuestionId == null ? 'Ask' : 'Edit'),
-        icon: const Icon(Icons.add_comment_outlined),
+        icon: Icon(
+          _editingQuestionId == null
+              ? Icons.add_comment_rounded
+              : Icons.edit_note_rounded,
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (value) => setState(() => _tabIndex = value),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           NavigationDestination(
-              icon: Icon(Icons.help_outline), label: 'Ask Question'),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.forum_outlined), label: 'My Questions'),
+            icon: Icon(Icons.add_comment_outlined),
+            selectedIcon: Icon(Icons.add_comment_rounded),
+            label: 'Ask Question',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined), label: 'Education'),
+            icon: Icon(Icons.question_answer_outlined),
+            selectedIcon: Icon(Icons.question_answer_rounded),
+            label: 'My Questions',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.settings_outlined), label: 'Settings'),
+            icon: Icon(Icons.article_outlined),
+            selectedIcon: Icon(Icons.article_rounded),
+            label: 'Education',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: 'Settings',
+          ),
         ],
       ),
       body: SafeArea(

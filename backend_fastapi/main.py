@@ -129,7 +129,7 @@ except ImportError:
     from storage import read_audit  # type: ignore
 
 
-app = FastAPI(title="MedicoHub Backend", version="1.3.4")
+app = FastAPI(title="MedicoHub Backend", version="1.3.5")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
