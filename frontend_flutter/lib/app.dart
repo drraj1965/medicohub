@@ -50,8 +50,12 @@ const Map<String, String> _languageLocales = <String, String>{
 const List<String> _adPlacements = <String>['home', 'question', 'education', 'blog'];
 const String _androidBannerAdUnitId = 'ca-app-pub-9639630926363418/7255832194';
 const String _androidAppOpenAdUnitId = 'ca-app-pub-9639630926363418/3316587183';
+const String _iosBannerAdUnitId = 'ca-app-pub-9639630926363418/4253455835';
+const String _iosAppOpenAdUnitId = 'ca-app-pub-9639630926363418/8422205095';
 const String _androidTestBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
 const String _androidTestAppOpenAdUnitId = 'ca-app-pub-3940256099942544/9257395921';
+const String _iosTestBannerAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
+const String _iosTestAppOpenAdUnitId = 'ca-app-pub-3940256099942544/5575463023';
 
 enum _QuestionFeedScope { mine, public }
 
@@ -530,12 +534,18 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (Platform.isAndroid) {
       return kDebugMode ? _androidTestBannerAdUnitId : _androidBannerAdUnitId;
     }
+    if (Platform.isIOS) {
+      return kDebugMode ? _iosTestBannerAdUnitId : _iosBannerAdUnitId;
+    }
     return '';
   }
 
   String get _appOpenAdUnitId {
     if (Platform.isAndroid) {
       return kDebugMode ? _androidTestAppOpenAdUnitId : _androidAppOpenAdUnitId;
+    }
+    if (Platform.isIOS) {
+      return kDebugMode ? _iosTestAppOpenAdUnitId : _iosAppOpenAdUnitId;
     }
     return '';
   }
