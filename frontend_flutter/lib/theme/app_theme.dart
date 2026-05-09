@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
-const String kDefaultCustomThemeHex = '#4F8C73';
+const String kDefaultCustomThemeHex = '#6F46FF';
 const List<String> kThemeHexPalette = <String>[
-  '#4F8C73',
-  '#2A7DB8',
-  '#C95B86',
-  '#CB8A18',
-  '#8570D6',
-  '#5A6D7C',
-  '#0F9D58',
-  '#FF6F61',
-  '#006D77',
-  '#8E24AA',
-  '#D97706',
-  '#1F2937',
+  '#6F46FF',
+  '#22C55E',
+  '#FF9E0B',
+  '#EC4899',
+  '#06B6D4',
+  '#8B5CF6',
+  '#0F172A',
+  '#64748B',
+  '#4F46E5',
+  '#16A34A',
+  '#F97316',
+  '#0EA5E9',
 ];
 
 enum MedicoHubThemePreset {
@@ -81,25 +81,25 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
   switch (config.preset) {
     case MedicoHubThemePreset.dark:
       return _buildTheme(
-        seed: const Color(0xFF4F8C73),
+        seed: const Color(0xFF6F46FF),
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B1014),
-        surface: const Color(0xFF11161A),
-        cardColor: const Color(0xFF161E24),
-        fieldColor: const Color(0xFF1A232A),
+        scaffoldBackgroundColor: const Color(0xFF091122),
+        surface: const Color(0xFF101A2B),
+        cardColor: const Color(0xFF122038),
+        fieldColor: const Color(0xFF18253E),
       );
     case MedicoHubThemePreset.light:
       return _buildTheme(
-        seed: const Color(0xFF3E6B72),
+        seed: const Color(0xFF0F172A),
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF4F7F8),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFF),
         surface: const Color(0xFFFFFFFF),
         cardColor: const Color(0xFFFFFFFF),
-        fieldColor: const Color(0xFFE8EEF0),
+        fieldColor: const Color(0xFFF1F5FB),
       );
     case MedicoHubThemePreset.rose:
       return _buildTheme(
-        seed: const Color(0xFFC95B86),
+        seed: const Color(0xFFEC4899),
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFFFF2F7),
         surface: const Color(0xFFFFFBFD),
@@ -108,7 +108,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
       );
     case MedicoHubThemePreset.mint:
       return _buildTheme(
-        seed: const Color(0xFF4E9C72),
+        seed: const Color(0xFF22C55E),
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF1FAF3),
         surface: const Color(0xFFFCFFFC),
@@ -117,7 +117,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
       );
     case MedicoHubThemePreset.ocean:
       return _buildTheme(
-        seed: const Color(0xFF2A7DB8),
+        seed: const Color(0xFF06B6D4),
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF1F8FF),
         surface: const Color(0xFFFDFEFF),
@@ -126,7 +126,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
       );
     case MedicoHubThemePreset.amber:
       return _buildTheme(
-        seed: const Color(0xFFCB8A18),
+        seed: const Color(0xFFFF9E0B),
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFFFF8ED),
         surface: const Color(0xFFFFFDF9),
@@ -135,7 +135,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
       );
     case MedicoHubThemePreset.lavender:
       return _buildTheme(
-        seed: const Color(0xFF8570D6),
+        seed: const Color(0xFF8B5CF6),
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF5F2FF),
         surface: const Color(0xFFFEFDFF),
@@ -144,7 +144,7 @@ ThemeData buildMedicoHubTheme(MedicoHubThemeConfig config) {
       );
     case MedicoHubThemePreset.slate:
       return _buildTheme(
-        seed: const Color(0xFF5A6D7C),
+        seed: const Color(0xFF64748B),
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF101417),
         surface: const Color(0xFF171C20),

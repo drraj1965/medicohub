@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -57,6 +58,8 @@ const String _iosTestBannerAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
 const String _iosTestAppOpenAdUnitId = 'ca-app-pub-3940256099942544/5575463023';
 const String _brandLightAsset = 'assets/branding/medicohub_we_connect_light.png';
 const String _brandDarkAsset = 'assets/branding/medicohub_we_connect_dark.png';
+const String _brandIconLightAsset = 'assets/branding/medicohub_icon_light.png';
+const String _brandIconDarkAsset = 'assets/branding/medicohub_icon_dark.png';
 const Map<String, String> _signInChannelOptions = <String, String>{
   'Email': 'email',
   'United Arab Emirates (+971)': '+971',
@@ -201,6 +204,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final TextEditingController _adCategoriesController = TextEditingController();
   final TextEditingController _adPriorityController =
       TextEditingController(text: '50');
+  final ScrollController _authScrollController = ScrollController();
 
   bool _premium = false;
   bool _loading = true;
@@ -222,6 +226,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _themeHexInvalid = false;
   bool _appSettingsBusy = false;
   bool _otpRequested = false;
+  bool _signupPolicyAccepted = false;
   int _tabIndex = 0;
 
   String _selectedExpiry = '7d';
@@ -261,6 +266,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String? _errorMessage;
   String? _authLookupMessage;
   String? _otpStatusMessage;
+  String? _otpRequestedDestination;
   String? _voiceStatus;
   String? _audioAttachmentPath;
   SharedPreferences? _prefs;
@@ -314,6 +320,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _adKeywordsController.dispose();
     _adCategoriesController.dispose();
     _adPriorityController.dispose();
+    _authScrollController.dispose();
     _emailLookupDebounce?.cancel();
     _backendRetryTimer?.cancel();
     _bannerAd?.dispose();
@@ -979,8 +986,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (_isSignInUsingEmail) {
       return raw;
     }
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    return digits.isEmpty ? '' : '$_selectedDialCode$digits';
+    return _normalizeOtpPhoneDestination(raw);
   }
 
   String _defaultSignInChannelForLocale() {
@@ -1000,16 +1006,47 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return digits;
   }
 
+  String _normalizeOtpPhoneDestination(String raw) {
+    var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      return '';
+    }
+    final countryDigits = _selectedDialCode.replaceAll('+', '');
+    if (digits.startsWith(countryDigits)) {
+      digits = digits.substring(countryDigits.length);
+    }
+    while (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    return digits.isEmpty ? '' : '$_selectedDialCode$digits';
+  }
+
   void _syncSignInIdentifierWithSelection() {
     _signInIdentifierController.text = _isSignInUsingEmail
         ? _emailController.text.trim()
         : _phoneDigitsWithoutCountryCode(_phoneController.text.trim());
   }
 
+  void _handleSignInIdentifierChanged() {
+    final raw = _signInIdentifierController.text.trim();
+    if (_isSignInUsingEmail) {
+      _emailController.text = raw;
+    } else {
+      _phoneController.text = _normalizeOtpPhoneDestination(raw);
+    }
+    if (_errorMessage != null || _otpStatusMessage != null) {
+      setState(() {
+        _errorMessage = null;
+        _otpStatusMessage = null;
+      });
+    }
+  }
+
   void _resetOtpJourney() {
     _otpRequested = false;
     _otpCodeController.clear();
     _otpStatusMessage = null;
+    _otpRequestedDestination = null;
   }
 
   void _switchAuthSurface({
@@ -1022,6 +1059,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _authLookupMessage = null;
       if (authMethod != null) {
         _selectedAuthMethod = authMethod;
+      }
+      if (!createAccountMode) {
+        _signupPolicyAccepted = false;
       }
       _resetOtpJourney();
       _syncSignInIdentifierWithSelection();
@@ -1119,8 +1159,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             child: ClipOval(
               child: Image.asset(
                 Theme.of(context).brightness == Brightness.dark
-                    ? _brandDarkAsset
-                    : _brandLightAsset,
+                    ? _brandIconDarkAsset
+                    : _brandIconLightAsset,
+                fit: BoxFit.cover,
+                width: 36,
+                height: 36,
               ),
             ),
           ),
@@ -1191,6 +1234,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                         ? _brandDarkAsset
                         : _brandLightAsset,
                     height: 96,
+                    fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -1400,9 +1444,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final isSignup = _createAccountMode;
     final showPassword = !isSignup && _selectedAuthMethod == _AuthMethod.password;
     final showOtpActions = !isSignup && _selectedAuthMethod == _AuthMethod.otp;
-    final brandAsset = Theme.of(context).brightness == Brightness.dark
-        ? _brandDarkAsset
-        : _brandLightAsset;
+    final brandAsset =
+        Theme.of(context).brightness == Brightness.dark ? _brandDarkAsset : _brandLightAsset;
+    final media = MediaQuery.of(context);
 
     return Container(
       decoration: BoxDecoration(
@@ -1417,7 +1461,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       ),
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          controller: _authScrollController,
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + media.viewInsets.bottom,
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 980),
             child: DecoratedBox(
@@ -1433,44 +1483,53 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.all(28),
+                padding: EdgeInsets.all(media.size.width < 420 ? 18 : 28),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final isWide = constraints.maxWidth > 760;
-                    final children = <Widget>[
-                      Expanded(
-                        flex: isWide ? 5 : 0,
-                        child: _buildAuthBrandPanel(context, assetPath: brandAsset),
-                      ),
-                      if (isWide) const SizedBox(width: 28),
-                      Expanded(
-                        flex: 6,
-                        child: _buildAuthCard(
-                          context,
-                          isSignup: isSignup,
-                          showPassword: showPassword,
-                          showOtpActions: showOtpActions,
-                        ),
-                      ),
-                    ];
                     if (isWide) {
                       return IntrinsicHeight(
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: children,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _buildAuthBrandPanel(
+                                context,
+                                assetPath: brandAsset,
+                                compact: false,
+                              ),
+                            ),
+                            const SizedBox(width: 28),
+                            Expanded(
+                              flex: 6,
+                              child: _buildAuthCard(
+                                context,
+                                isSignup: isSignup,
+                                showPassword: showPassword,
+                                showOtpActions: showOtpActions,
+                                compact: false,
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildAuthBrandPanel(context, assetPath: brandAsset),
-                        const SizedBox(height: 24),
+                        _buildAuthBrandPanel(
+                          context,
+                          assetPath: brandAsset,
+                          compact: true,
+                        ),
+                        const SizedBox(height: 16),
                         _buildAuthCard(
                           context,
                           isSignup: isSignup,
                           showPassword: showPassword,
                           showOtpActions: showOtpActions,
+                          compact: true,
                         ),
                       ],
                     );
@@ -1487,9 +1546,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Widget _buildAuthBrandPanel(
     BuildContext context, {
     required String assetPath,
+    required bool compact,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 16 : 20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
@@ -1501,36 +1561,71 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           end: Alignment.bottomRight,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Center(
-            child: Image.asset(
-              assetPath,
-              height: 170,
-              fit: BoxFit.contain,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'MedicoHub',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'We Connect',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
+      child: compact
+          ? Row(
+              children: [
+                Image.asset(
+                  assetPath,
+                  height: 72,
+                  width: 72,
+                  fit: BoxFit.contain,
                 ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'A simpler, calmer way to ask questions, follow trusted replies, and stay connected with your doctor and care team.',
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ],
-      ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MedicoHub',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'We Connect',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Simple sign-in, clear questions, faster follow-up.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Center(
+                  child: Image.asset(
+                    assetPath,
+                    height: 170,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'MedicoHub',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'We Connect',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'A simpler, calmer way to ask questions, follow trusted replies, and stay connected with your doctor and care team.',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ],
+            ),
     );
   }
 
@@ -1539,33 +1634,37 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     required bool isSignup,
     required bool showPassword,
     required bool showOtpActions,
+    required bool compact,
   }) {
+    final textTheme = Theme.of(context).textTheme;
+    final spacing = compact ? 10.0 : 12.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           isSignup ? 'Create your account' : 'Sign in to your account',
-          style: Theme.of(context).textTheme.headlineSmall,
+          style: compact ? textTheme.titleLarge : textTheme.headlineSmall,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Text(
           isSignup
-              ? 'Keep the essentials only. Create your MedicoHub account and continue straight into your dashboard.'
-              : 'Choose email or mobile OTP sign-in, continue securely, and pick up exactly where you left off.',
+              ? 'Register once, agree to the essentials, and continue.'
+              : 'Use mobile or email and continue securely.',
+          style: compact ? textTheme.bodySmall : textTheme.bodyMedium,
         ),
         if (_identityLookupBusy) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           const LinearProgressIndicator(),
         ],
         if (_authLookupMessage != null && _authLookupMessage!.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             _authLookupMessage!,
             style: TextStyle(color: Theme.of(context).colorScheme.primary),
           ),
         ],
-        const SizedBox(height: 20),
+        SizedBox(height: compact ? 16 : 20),
         if (isSignup) ...[
           TextField(
             controller: _displayNameController,
@@ -1574,76 +1673,132 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               prefixIcon: Icon(Icons.person_outline_rounded),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.mail_outline_rounded),
+          SizedBox(height: spacing),
+          if (compact) ...[
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.mail_outline_rounded),
+              ),
+            ),
+            SizedBox(height: spacing),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Mobile number',
+                prefixIcon: Icon(Icons.call_outlined),
+              ),
+            ),
+            SizedBox(height: spacing),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedAccountRole,
+              decoration: const InputDecoration(labelText: 'Account role'),
+              items: _accountRoles
+                  .map(
+                    (role) => DropdownMenuItem<String>(
+                      value: role,
+                      child: Text(role[0].toUpperCase() + role.substring(1)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedAccountRole = value);
+                }
+              },
+            ),
+            SizedBox(height: spacing),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedLanguage,
+              decoration: const InputDecoration(labelText: 'Preferred language'),
+              items: _languageLocales.keys
+                  .map(
+                    (language) => DropdownMenuItem<String>(
+                      value: language,
+                      child: Text(language),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedLanguage = value);
+                }
+              },
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.mail_outline_rounded),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile number',
-                    prefixIcon: Icon(Icons.call_outlined),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Mobile number',
+                      prefixIcon: Icon(Icons.call_outlined),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedAccountRole,
-                  decoration: const InputDecoration(labelText: 'Account role'),
-                  items: _accountRoles
-                      .map(
-                        (role) => DropdownMenuItem<String>(
-                          value: role,
-                          child: Text(role[0].toUpperCase() + role.substring(1)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedAccountRole = value);
-                    }
-                  },
+              ],
+            ),
+            SizedBox(height: spacing),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedAccountRole,
+                    decoration: const InputDecoration(labelText: 'Account role'),
+                    items: _accountRoles
+                        .map(
+                          (role) => DropdownMenuItem<String>(
+                            value: role,
+                            child: Text(role[0].toUpperCase() + role.substring(1)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedAccountRole = value);
+                      }
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedLanguage,
-                  decoration: const InputDecoration(labelText: 'Preferred language'),
-                  items: _languageLocales.keys
-                      .map(
-                        (language) => DropdownMenuItem<String>(
-                          value: language,
-                          child: Text(language),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedLanguage = value);
-                    }
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedLanguage,
+                    decoration: const InputDecoration(labelText: 'Preferred language'),
+                    items: _languageLocales.keys
+                        .map(
+                          (language) => DropdownMenuItem<String>(
+                            value: language,
+                            child: Text(language),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedLanguage = value);
+                      }
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
           if (_selectedAccountRole != 'patient') ...[
-            const SizedBox(height: 12),
+            SizedBox(height: spacing),
             DropdownButtonFormField<String>(
               initialValue: _selectedSpecialty,
               decoration: const InputDecoration(labelText: 'Specialty'),
@@ -1663,76 +1818,118 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ],
         ] else ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 210,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedSignInChannel,
-                  decoration: const InputDecoration(labelText: 'Username via'),
-                  items: _signInChannelOptions.keys
-                      .map(
-                        (label) => DropdownMenuItem<String>(
-                          value: label,
-                          child: Text(label, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    setState(() {
-                      _selectedSignInChannel = value;
-                      _errorMessage = null;
-                      _resetOtpJourney();
-                      _syncSignInIdentifierWithSelection();
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _signInIdentifierController,
-                  keyboardType: _isSignInUsingEmail
-                      ? TextInputType.emailAddress
-                      : TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: _isSignInUsingEmail ? 'Email address' : 'Mobile number',
-                    prefixIcon: Icon(
-                      _isSignInUsingEmail
-                          ? Icons.mail_outline_rounded
-                          : Icons.call_outlined,
+          if (compact) ...[
+            DropdownButtonFormField<String>(
+              initialValue: _selectedSignInChannel,
+              decoration: const InputDecoration(labelText: 'Continue with'),
+              items: _signInChannelOptions.keys
+                  .map(
+                    (label) => DropdownMenuItem<String>(
+                      value: label,
+                      child: Text(label, overflow: TextOverflow.ellipsis),
                     ),
-                    prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
-                    helperText: _isSignInUsingEmail
-                        ? 'Use email for password sign-in.'
-                        : 'Switch to OTP for mobile-based sign-in.',
-                  ),
-                  onChanged: (_) {
-                    if (_isSignInUsingEmail) {
-                      _emailController.text = _signInIdentifierController.text.trim();
-                    } else {
-                      final digits = _signInIdentifierController.text.trim();
-                      _phoneController.text =
-                          digits.isEmpty ? '' : '$_selectedDialCode$digits';
-                    }
-                    if (_errorMessage != null || _otpStatusMessage != null) {
-                      setState(() {
-                        _errorMessage = null;
-                        _otpStatusMessage = null;
-                      });
-                    }
-                  },
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() {
+                  _selectedSignInChannel = value;
+                  _errorMessage = null;
+                  _resetOtpJourney();
+                  _syncSignInIdentifierWithSelection();
+                });
+              },
+            ),
+            SizedBox(height: spacing),
+            TextField(
+              controller: _signInIdentifierController,
+              keyboardType:
+                  _isSignInUsingEmail ? TextInputType.emailAddress : TextInputType.phone,
+              autofillHints: _isSignInUsingEmail
+                  ? const [AutofillHints.username, AutofillHints.email]
+                  : const [AutofillHints.telephoneNumber],
+              decoration: InputDecoration(
+                labelText: _isSignInUsingEmail ? 'Email' : 'Mobile number',
+                prefixIcon: Icon(
+                  _isSignInUsingEmail
+                      ? Icons.mail_outline_rounded
+                      : Icons.call_outlined,
                 ),
+                prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
               ),
-            ],
+              onChanged: (_) => _handleSignInIdentifierChanged(),
+            ),
+          ] else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 230,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedSignInChannel,
+                    decoration: const InputDecoration(labelText: 'Continue with'),
+                    items: _signInChannelOptions.keys
+                        .map(
+                          (label) => DropdownMenuItem<String>(
+                            value: label,
+                            child: Text(label, overflow: TextOverflow.ellipsis),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() {
+                        _selectedSignInChannel = value;
+                        _errorMessage = null;
+                        _resetOtpJourney();
+                        _syncSignInIdentifierWithSelection();
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _signInIdentifierController,
+                    keyboardType: _isSignInUsingEmail
+                        ? TextInputType.emailAddress
+                        : TextInputType.phone,
+                    autofillHints: _isSignInUsingEmail
+                        ? const [AutofillHints.username, AutofillHints.email]
+                        : const [AutofillHints.telephoneNumber],
+                    decoration: InputDecoration(
+                      labelText: _isSignInUsingEmail ? 'Email' : 'Mobile number',
+                      prefixIcon: Icon(
+                        _isSignInUsingEmail
+                            ? Icons.mail_outline_rounded
+                            : Icons.call_outlined,
+                      ),
+                      prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
+                    ),
+                    onChanged: (_) => _handleSignInIdentifierChanged(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: spacing),
+          Text(
+            'Choose ${_isSignInUsingEmail ? 'password or OTP' : 'OTP or switch to email for password sign-in'}.',
+            style: textTheme.bodySmall,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: spacing),
           SegmentedButton<_AuthMethod>(
             showSelectedIcon: false,
+            style: compact
+                ? const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  )
+                : null,
             segments: const [
               ButtonSegment<_AuthMethod>(
                 value: _AuthMethod.password,
@@ -1754,11 +1951,22 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               });
             },
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: spacing),
         ],
         _buildAuthAgreement(context),
         if (isSignup) ...[
           const SizedBox(height: 8),
+          CheckboxListTile(
+            value: _signupPolicyAccepted,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            onChanged: (value) {
+              setState(() => _signupPolicyAccepted = value ?? false);
+            },
+            title: const Text(
+              'I have read the notice and agree to continue with account creation.',
+            ),
+          ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1774,11 +1982,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ],
           ),
         ],
-        const SizedBox(height: 16),
+        SizedBox(height: spacing),
         if (showPassword)
           TextField(
             controller: _passwordController,
             obscureText: !_signInPasswordVisible,
+            autofillHints: const [AutofillHints.password],
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
@@ -1798,6 +2007,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           TextField(
             controller: _passwordController,
             obscureText: !_passwordVisible,
+            autofillHints: const [AutofillHints.newPassword],
             decoration: InputDecoration(
               labelText: 'Create password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
@@ -1821,19 +2031,25 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ),
           if (_otpRequested) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: spacing),
             TextField(
               controller: _otpCodeController,
               keyboardType: TextInputType.number,
               autofillHints: const [AutofillHints.oneTimeCode],
+              maxLength: 6,
               decoration: const InputDecoration(
                 labelText: 'Enter OTP',
                 prefixIcon: Icon(Icons.verified_user_outlined),
               ),
+              onChanged: (value) {
+                if (value.trim().length == 6 && !_authBusy) {
+                  unawaited(_verifyInlineOtp());
+                }
+              },
             ),
           ],
           if (_otpStatusMessage != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               _otpStatusMessage!,
               style: TextStyle(
@@ -1843,20 +2059,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ],
         ],
         if (_errorMessage != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             _errorMessage!,
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         ],
-        const SizedBox(height: 20),
+        SizedBox(height: compact ? 16 : 20),
         SizedBox(
           width: double.infinity,
           child: FilledButton(
             onPressed: _authBusy
                 ? null
                 : (isSignup
-                    ? _registerFirebaseUser
+                    ? (_signupPolicyAccepted ? _registerFirebaseUser : null)
                     : (showOtpActions ? _verifyInlineOtp : _signInWithFirebase)),
             child: Text(
               _authBusy
@@ -1868,7 +2084,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ),
         ),
         if (!isSignup && showPassword) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -1877,7 +2093,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ),
         ],
-        const SizedBox(height: 16),
+        SizedBox(height: compact ? 12 : 16),
         Center(
           child: Column(
             children: [
@@ -1897,7 +2113,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ],
           ),
         ),
-        if (kDebugMode) ...[
+        if (kDebugMode && !compact) ...[
           const SizedBox(height: 8),
           TextButton(
             onPressed: _authBusy ? null : _useBackendDemoUser,
@@ -1909,37 +2125,52 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Widget _buildAuthAgreement(BuildContext context) {
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(
-          'By clicking continue you acknowledge you have read and agreed to our ',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        TextButton(
-          onPressed: () => _showLegalSheet(
-            title: 'Terms of Use',
-            body: '${_currentDisclaimerDocument.title}\n\n${_currentDisclaimerDocument.body}',
+    final style = Theme.of(context).textTheme.bodySmall;
+    return RichText(
+      text: TextSpan(
+        style: style?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        children: [
+          const TextSpan(
+            text: 'By clicking continue you acknowledge you have read and agreed to our ',
           ),
-          child: const Text('Terms of Use'),
-        ),
-        Text(
-          ' and ',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        TextButton(
-          onPressed: () => _showLegalSheet(
-            title: 'Privacy Policy',
-            body:
-                'MedicoHub uses your sign-in, profile, and question data to deliver account access, secure thread updates, ads configuration, and educational content.\n\n$_currentRegionNote',
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: InkWell(
+              onTap: () => _showLegalSheet(
+                title: 'Terms of Use',
+                body:
+                    '${_currentDisclaimerDocument.title}\n\n${_currentDisclaimerDocument.body}',
+              ),
+              child: Text(
+                'Terms of Use',
+                style: style?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
           ),
-          child: const Text('Privacy Policy'),
-        ),
-        Text(
-          '.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+          const TextSpan(text: ' and '),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: InkWell(
+              onTap: () => _showLegalSheet(
+                title: 'Privacy Policy',
+                body:
+                    'MedicoHub uses your sign-in, profile, and question data to deliver account access, secure thread updates, ads configuration, and educational content.\n\n$_currentRegionNote',
+              ),
+              child: Text(
+                'Privacy Policy',
+                style: style?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          ),
+          const TextSpan(text: '.'),
+        ],
+      ),
     );
   }
 
@@ -1979,6 +2210,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         const SizedBox(height: 16),
         _buildWhatsAppActivationBadge(context),
         const SizedBox(height: 16),
+        _buildQuickLinksCard(context),
+        const SizedBox(height: 16),
         if (_bannerReady) ...[
           _buildBannerAdCard(),
           const SizedBox(height: 16),
@@ -1999,10 +2232,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 context,
                 title: user.isAdmin ? 'Admin Dashboard' : user.isDoctor ? 'Doctor Dashboard' : 'Patient Dashboard',
                 body: user.isAdmin
-                    ? 'Oversee the doctor roster, keep threads healthy, curate educational content, and manage app operations from one place.'
+                    ? 'Roster, moderation, education, and app operations in one place.'
                     : user.isDoctor
-                        ? 'Review assigned questions, answer clearly, publish education posts, and stay on top of live patient follow-ups.'
-                        : 'Track your open threads, move quickly into new questions, and follow concise updates without extra clutter.',
+                        ? 'Assigned questions, education updates, and follow-ups in one place.'
+                        : 'Your active threads, quick actions, and updates in one place.',
                 statLines: [
                   'Visible threads: ${scopedQuestions.length}',
                   'Open threads: $pendingQuestions',
@@ -2176,7 +2409,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             const SizedBox(height: 12),
             ...statLines.map((line) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(line),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size: 8,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(line)),
+                    ],
+                  ),
                 )),
           ],
         ),
@@ -2277,10 +2520,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             const SizedBox(height: 12),
             Text(
               user.isAdmin
-                  ? 'Keep operations, education, and clinical conversations moving without noise.'
+                  ? 'Run the service, guide conversations, and keep the experience uncluttered.'
                   : user.isDoctor
-                      ? 'Move from updates to answers quickly, with questions, education, and notifications in one place.'
-                      : 'Ask, follow, and learn through a cleaner dashboard built for quick medical communication.',
+                      ? 'Move from incoming questions to clear answers quickly.'
+                      : 'Ask, follow, and learn through a lighter dashboard.',
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -2302,6 +2545,89 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   label: Text('${_education.length} education items'),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickLinksCard(BuildContext context) {
+    final items = <({IconData icon, String label, VoidCallback onTap})>[
+      (
+        icon: Icons.add_comment_outlined,
+        label: 'Ask Question',
+        onTap: () => setState(() => _tabIndex = 1),
+      ),
+      (
+        icon: Icons.forum_outlined,
+        label: 'My Questions',
+        onTap: () => setState(() => _tabIndex = 2),
+      ),
+      (
+        icon: Icons.auto_stories_outlined,
+        label: 'Education',
+        onTap: () => setState(() => _tabIndex = 3),
+      ),
+      (
+        icon: Icons.person_outline_rounded,
+        label: 'Profile',
+        onTap: () => setState(() => _tabIndex = 4),
+      ),
+      (
+        icon: Icons.settings_outlined,
+        label: 'Settings',
+        onTap: () => setState(() => _tabIndex = 4),
+      ),
+      (
+        icon: Icons.info_outline_rounded,
+        label: 'About',
+        onTap: _showAboutSheet,
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Quick Links',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final crossAxisCount = constraints.maxWidth > 760
+                    ? 3
+                    : constraints.maxWidth > 480
+                        ? 2
+                        : 1;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: items.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: crossAxisCount == 1 ? 4.4 : 2.7,
+                  ),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return FilledButton.tonalIcon(
+                      onPressed: item.onTap,
+                      icon: Icon(item.icon),
+                      label: Text(item.label),
+                      style: FilledButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
@@ -2379,16 +2705,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    activated ? 'WhatsApp ready for today' : 'Activate WhatsApp notifications',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    activated ? 'Daily WhatsApp alerts are active on this device.' : 'Enable the daily WhatsApp bridge in one tap.',
+                  Expanded(
+                    child: Text(
+                      activated
+                          ? 'WhatsApp ready for today'
+                          : 'Activate WhatsApp notifications',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
                 ],
               ),
@@ -3149,6 +3474,58 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                         customHex: value,
                       );
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _customThemeDarkMode
+                          ? const Color(0xFF0F172A)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: safeThemeSeedColor(_themeHexController.text),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Current accent',
+                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                      color: _customThemeDarkMode ? Colors.white70 : null,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _themeHexController.text.isEmpty
+                                    ? widget.themeConfig.customSeedHex
+                                    : _themeHexController.text,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      color: _customThemeDarkMode ? Colors.white : null,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: _openThemeColorStudio,
+                          child: const Text('Open Color Studio'),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -4298,6 +4675,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       setState(() {
         _authBusy = false;
         _otpRequested = true;
+        _otpRequestedDestination = destination;
         _otpStatusMessage = result.deliveryStatus == 'preview_only' &&
                 _isSignInUsingEmail
             ? 'Email OTP is still in preview mode while MedicoHub completes its dedicated sender setup. Mobile OTP or password sign-in is more reliable for now.'
@@ -4333,8 +4711,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _errorMessage = null;
     });
     try {
+      final destination = _otpRequestedDestination ?? _formattedSignInDestination;
       final profile = await _api.verifyOtp(
-        destination: _formattedSignInDestination,
+        destination: destination,
         channel: _isSignInUsingEmail ? 'email' : 'sms',
         code: _otpCodeController.text.trim(),
       );
@@ -4567,6 +4946,111 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ? 'Custom theme applied with seed ${nextConfig.customSeedHex}.'
           : '${preset.label} theme applied.';
     });
+  }
+
+  Future<void> _openThemeColorStudio() async {
+    var selected = safeThemeSeedColor(
+      _themeHexController.text.isEmpty
+          ? widget.themeConfig.customSeedHex
+          : _themeHexController.text,
+    );
+    var useDarkSurfaces = _customThemeDarkMode;
+    final applied = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Color Studio',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Pick a color visually, fine-tune it like a paint palette, then apply it to your custom MedicoHub theme.',
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: useDarkSurfaces
+                              ? const Color(0xFF0F172A)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.palette_outlined, color: selected),
+                            const SizedBox(width: 10),
+                            Text(
+                              '#${selected.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                              style: TextStyle(
+                                color: useDarkSurfaces ? Colors.white : null,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ColorPicker(
+                        pickerColor: selected,
+                        enableAlpha: false,
+                        labelTypes: const [ColorLabelType.hex],
+                        pickerAreaBorderRadius:
+                            const BorderRadius.all(Radius.circular(20)),
+                        onColorChanged: (value) {
+                          setModalState(() => selected = value);
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: useDarkSurfaces,
+                        title: const Text('Use dark surfaces'),
+                        onChanged: (value) {
+                          setModalState(() => useDarkSurfaces = value);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Apply Theme'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (applied != true) {
+      return;
+    }
+    final hex = '#${selected.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+    _themeHexController.text = hex;
+    _applyThemeSelection(
+      preset: MedicoHubThemePreset.custom,
+      customHex: hex,
+      customDarkMode: useDarkSurfaces,
+    );
   }
 
   List<String> _parseCsv(String raw) => raw
