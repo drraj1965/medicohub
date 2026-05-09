@@ -129,8 +129,13 @@ class UpdateService {
   }
 
   String preferredDownloadUrl(UpdateInfo info) {
-    if (Platform.isAndroid && (info.androidDownloadUrl?.isNotEmpty ?? false)) {
-      return info.androidDownloadUrl!;
+    if (Platform.isAndroid) {
+      if (info.releasePageUrl?.isNotEmpty ?? false) {
+        return info.releasePageUrl!;
+      }
+      if (info.androidDownloadUrl?.isNotEmpty ?? false) {
+        return info.androidDownloadUrl!;
+      }
     }
     if (Platform.isIOS && (info.iosStoreUrl?.isNotEmpty ?? false)) {
       return info.iosStoreUrl!;
