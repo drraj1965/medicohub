@@ -275,8 +275,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   AppOpenAd? _appOpenAd;
   bool _bannerReady = false;
   bool _isShowingAppOpenAd = false;
+  bool _mobileAdsInitialized = false;
+  bool _useTestAds = false;
+  String _bannerAdStatus = 'Not initialized yet.';
+  String _appOpenAdStatus = 'Not initialized yet.';
   Timer? _emailLookupDebounce;
   Timer? _backendRetryTimer;
+  Timer? _bannerRetryTimer;
+  Timer? _appOpenRetryTimer;
 
   @override
   void initState() {
@@ -323,6 +329,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _authScrollController.dispose();
     _emailLookupDebounce?.cancel();
     _backendRetryTimer?.cancel();
+    _bannerRetryTimer?.cancel();
+    _appOpenRetryTimer?.cancel();
     _bannerAd?.dispose();
     _appOpenAd?.dispose();
     WidgetsBinding.instance.removeObserver(this);
@@ -351,6 +359,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       prefs = results[0];
       _loadThemePreferences(prefs);
       _loadUpdatePreferences(prefs);
+      _loadAdPreferences(prefs);
       final currentVersion = await _updateService.currentVersion();
       if (_updateService.shouldCheck(
         prefs: prefs,
@@ -370,6 +379,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       if (updateInfo != null) {
         unawaited(_handleAutoUpdateIfNeeded(updateInfo));
       }
+      unawaited(_initializeMobileAdsIfNeeded());
     } catch (error) {
       if (!mounted) {
         return;
@@ -502,6 +512,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _themePresetKey = 'theme_preset';
   static const String _themeCustomHexKey = 'theme_custom_hex';
   static const String _themeCustomDarkKey = 'theme_custom_dark';
+  static const String _useTestAdsPreferenceKey = 'ads_use_test_units';
 
   void _loadThemePreferences(SharedPreferences prefs) {
     final presetName = prefs.getString(_themePresetKey);
@@ -548,6 +559,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _updateAutoOpen = prefs.getBool(UpdateService.preferenceAutoOpenKey) ?? false;
   }
 
+  void _loadAdPreferences(SharedPreferences prefs) {
+    _useTestAds = prefs.getBool(_useTestAdsPreferenceKey) ?? false;
+  }
+
   Future<void> _persistUpdatePreferences() async {
     final prefs = _prefs;
     if (prefs == null) {
@@ -563,41 +578,98 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     );
   }
 
+  Future<void> _persistAdPreferences() async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setBool(_useTestAdsPreferenceKey, _useTestAds);
+  }
+
   bool get _supportsMobileAds => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   String get _bannerAdUnitId {
     if (Platform.isAndroid) {
-      return kDebugMode ? _androidTestBannerAdUnitId : _androidBannerAdUnitId;
+      return (_useTestAds || kDebugMode)
+          ? _androidTestBannerAdUnitId
+          : _androidBannerAdUnitId;
     }
     if (Platform.isIOS) {
-      return kDebugMode ? _iosTestBannerAdUnitId : _iosBannerAdUnitId;
+      return (_useTestAds || kDebugMode)
+          ? _iosTestBannerAdUnitId
+          : _iosBannerAdUnitId;
     }
     return '';
   }
 
   String get _appOpenAdUnitId {
     if (Platform.isAndroid) {
-      return kDebugMode ? _androidTestAppOpenAdUnitId : _androidAppOpenAdUnitId;
+      return (_useTestAds || kDebugMode)
+          ? _androidTestAppOpenAdUnitId
+          : _androidAppOpenAdUnitId;
     }
     if (Platform.isIOS) {
-      return kDebugMode ? _iosTestAppOpenAdUnitId : _iosAppOpenAdUnitId;
+      return (_useTestAds || kDebugMode)
+          ? _iosTestAppOpenAdUnitId
+          : _iosAppOpenAdUnitId;
     }
     return '';
   }
+
+  String get _adModeLabel => _useTestAds || kDebugMode ? 'Test ads' : 'Live ads';
 
   Future<void> _initializeMobileAdsIfNeeded() async {
     if (!_supportsMobileAds) {
       return;
     }
+    if (_mobileAdsInitialized) {
+      _loadBannerAd();
+      _loadAppOpenAd();
+      return;
+    }
     await MobileAds.instance.initialize();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _mobileAdsInitialized = true;
+      _bannerAdStatus = '$_adModeLabel initialized. Waiting for banner fill...';
+      _appOpenAdStatus = '$_adModeLabel initialized. Waiting for app-open fill...';
+    });
     _loadBannerAd();
     _loadAppOpenAd();
+  }
+
+  void _disposeLoadedAds() {
+    _bannerRetryTimer?.cancel();
+    _appOpenRetryTimer?.cancel();
+    _bannerAd?.dispose();
+    _appOpenAd?.dispose();
+    _bannerAd = null;
+    _appOpenAd = null;
+    _bannerReady = false;
+    _isShowingAppOpenAd = false;
+  }
+
+  Future<void> _reloadAds() async {
+    _disposeLoadedAds();
+    if (mounted) {
+      setState(() {
+        _bannerAdStatus = 'Reloading ${_adModeLabel.toLowerCase()}...';
+        _appOpenAdStatus = 'Reloading ${_adModeLabel.toLowerCase()}...';
+      });
+    }
+    await _initializeMobileAdsIfNeeded();
   }
 
   void _loadBannerAd() {
     if (!_supportsMobileAds || _bannerAd != null || _bannerAdUnitId.isEmpty) {
       return;
     }
+    setState(() {
+      _bannerReady = false;
+      _bannerAdStatus = 'Loading ${_adModeLabel.toLowerCase()} banner...';
+    });
     final banner = BannerAd(
       adUnitId: _bannerAdUnitId,
       size: AdSize.banner,
@@ -611,10 +683,26 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           setState(() {
             _bannerAd = ad as BannerAd;
             _bannerReady = true;
+            _bannerAdStatus = '$_adModeLabel banner loaded.';
           });
         },
-        onAdFailedToLoad: (ad, _) {
+        onAdFailedToLoad: (ad, error) {
           ad.dispose();
+          _bannerRetryTimer?.cancel();
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _bannerAd = null;
+            _bannerReady = false;
+            _bannerAdStatus =
+                '$_adModeLabel banner failed (${error.code}): ${error.message}';
+          });
+          _bannerRetryTimer = Timer(const Duration(seconds: 20), () {
+            if (mounted) {
+              _loadBannerAd();
+            }
+          });
         },
       ),
     );
@@ -625,16 +713,41 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (!_supportsMobileAds || _appOpenAd != null || _appOpenAdUnitId.isEmpty) {
       return;
     }
+    if (mounted) {
+      setState(() {
+        _appOpenAdStatus = 'Loading ${_adModeLabel.toLowerCase()} app-open ad...';
+      });
+    }
     AppOpenAd.load(
       adUnitId: _appOpenAdUnitId,
       request: const AdRequest(),
       adLoadCallback: AppOpenAdLoadCallback(
         onAdLoaded: (ad) {
           _appOpenAd?.dispose();
-          _appOpenAd = ad;
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() {
+            _appOpenAd = ad;
+            _appOpenAdStatus = '$_adModeLabel app-open ad loaded.';
+          });
         },
-        onAdFailedToLoad: (_) {
-          _appOpenAd = null;
+        onAdFailedToLoad: (error) {
+          _appOpenRetryTimer?.cancel();
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _appOpenAd = null;
+            _appOpenAdStatus =
+                '$_adModeLabel app-open failed (${error.code}): ${error.message}';
+          });
+          _appOpenRetryTimer = Timer(const Duration(seconds: 30), () {
+            if (mounted) {
+              _loadAppOpenAd();
+            }
+          });
         },
       ),
     );
@@ -651,14 +764,27 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        _appOpenAd = null;
-        _isShowingAppOpenAd = false;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _appOpenAd = null;
+          _isShowingAppOpenAd = false;
+          _appOpenAdStatus = '$_adModeLabel app-open was shown.';
+        });
         _loadAppOpenAd();
       },
-      onAdFailedToShowFullScreenContent: (ad, _) {
+      onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
-        _appOpenAd = null;
-        _isShowingAppOpenAd = false;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _appOpenAd = null;
+          _isShowingAppOpenAd = false;
+          _appOpenAdStatus =
+              '$_adModeLabel app-open could not show (${error.code}): ${error.message}';
+        });
         _loadAppOpenAd();
       },
     );
@@ -3671,6 +3797,61 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           Platform.isAndroid ? 'Download APK' : 'Open Update',
                         ),
                       ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Ad Delivery',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  value: _useTestAds,
+                  onChanged: _supportsMobileAds
+                      ? (value) {
+                          setState(() => _useTestAds = value);
+                          unawaited(_persistAdPreferences());
+                          unawaited(_reloadAds());
+                        }
+                      : null,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use test ads on this device'),
+                  subtitle: Text(
+                    _useTestAds
+                        ? 'Safe for QA while Play Store / App Store ad serving is still being finalized.'
+                        : 'Use live AdMob units. If serving is limited, the diagnostics below will show why the app is not receiving fill.',
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mode: $_adModeLabel',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Banner: $_bannerAdStatus'),
+                      const SizedBox(height: 6),
+                      Text('App open: $_appOpenAdStatus'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _supportsMobileAds ? _reloadAds : null,
+                      child: const Text('Reload Ads'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
