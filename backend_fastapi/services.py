@@ -44,6 +44,7 @@ try:
         TitleTemplate,
         TitleTemplateCreate,
         User,
+        UserDeleteRequest,
         UserProfileUpsertRequest,
         make_id,
         utc_now,
@@ -87,6 +88,7 @@ except ImportError:
         TitleTemplate,
         TitleTemplateCreate,
         User,
+        UserDeleteRequest,
         UserProfileUpsertRequest,
         make_id,
         utc_now,
@@ -983,6 +985,26 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
     repository.upsert_user(user)
     emit_audit("user", user["id"], "upserted", user["id"], _serialize_user(user))
     return _serialize_user(user)
+
+
+def delete_user_account(user_id: str, payload: UserDeleteRequest) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if payload.actor_id != user_id and not (actor and actor.get("role") == "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the account owner or an admin can delete this account.",
+        )
+    removed = repository.delete_user(user_id)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    emit_audit(
+        "user",
+        user_id,
+        "deleted",
+        payload.actor_id,
+        {"id": user_id, "email": removed.get("email")},
+    )
+    return {"user_id": user_id, "deleted": True}
 
 
 def invite_doctor(payload: DoctorInviteCreate) -> dict:

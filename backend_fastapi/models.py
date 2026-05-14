@@ -161,6 +161,10 @@ class UserProfileUpsertRequest(BaseModel):
     specialties: list[str] = Field(default_factory=list)
 
 
+class UserDeleteRequest(BaseModel):
+    actor_id: str
+
+
 class AttachmentCreate(BaseModel):
     file_name: str
     mime_type: str

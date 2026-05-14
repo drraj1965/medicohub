@@ -24,6 +24,7 @@ try:
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
         TitleTemplateCreate,
+        UserDeleteRequest,
         UserProfileUpsertRequest,
     )
     from .services import (
@@ -34,6 +35,7 @@ try:
         create_blog_article,
         create_attachment,
         delete_question,
+        delete_user_account,
         invite_doctor,
         create_payment_intent,
         create_question,
@@ -86,6 +88,7 @@ except ImportError:
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
         TitleTemplateCreate,
+        UserDeleteRequest,
         UserProfileUpsertRequest,
     )
     from services import (  # type: ignore
@@ -96,6 +99,7 @@ except ImportError:
         create_blog_article,
         create_attachment,
         delete_question,
+        delete_user_account,
         invite_doctor,
         create_payment_intent,
         create_question,
@@ -195,6 +199,11 @@ def get_user(user_id: str) -> dict:
 @app.post("/users/profile")
 def upsert_user(payload: UserProfileUpsertRequest) -> dict:
     return upsert_user_profile(payload)
+
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: str, payload: UserDeleteRequest) -> dict:
+    return delete_user_account(user_id, payload)
 
 
 @app.get("/questions")

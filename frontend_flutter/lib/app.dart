@@ -225,6 +225,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _updateAutoOpen = false;
   bool _themeHexInvalid = false;
   bool _appSettingsBusy = false;
+  bool _deleteAccountBusy = false;
   bool _otpRequested = false;
   bool _signupPolicyAccepted = false;
   int _tabIndex = 0;
@@ -1944,11 +1945,47 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ],
         ] else ...[
-          if (compact) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment<bool>(
+                  value: true,
+                  icon: Icon(Icons.mail_outline_rounded),
+                  label: Text('Email'),
+                ),
+                ButtonSegment<bool>(
+                  value: false,
+                  icon: Icon(Icons.call_outlined),
+                  label: Text('Mobile'),
+                ),
+              ],
+              selected: <bool>{_isSignInUsingEmail},
+              onSelectionChanged: (selection) {
+                final useEmail = selection.first;
+                setState(() {
+                  _selectedSignInChannel =
+                      useEmail ? 'Email' : _defaultSignInChannelForLocale();
+                  _errorMessage = null;
+                  _resetOtpJourney();
+                  if (!useEmail && _selectedAuthMethod == _AuthMethod.password) {
+                    _selectedAuthMethod = _AuthMethod.otp;
+                  }
+                  _syncSignInIdentifierWithSelection();
+                });
+              },
+            ),
+          ),
+          SizedBox(height: spacing),
+          if (!_isSignInUsingEmail) ...[
             DropdownButtonFormField<String>(
-              initialValue: _selectedSignInChannel,
-              decoration: const InputDecoration(labelText: 'Continue with'),
+              initialValue: _selectedSignInChannel == 'Email'
+                  ? _defaultSignInChannelForLocale()
+                  : _selectedSignInChannel,
+              decoration: const InputDecoration(labelText: 'Country/region code'),
               items: _signInChannelOptions.keys
+                  .where((label) => label != 'Email')
                   .map(
                     (label) => DropdownMenuItem<String>(
                       value: label,
@@ -1969,82 +2006,33 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               },
             ),
             SizedBox(height: spacing),
-            TextField(
-              controller: _signInIdentifierController,
-              keyboardType:
-                  _isSignInUsingEmail ? TextInputType.emailAddress : TextInputType.phone,
-              autofillHints: _isSignInUsingEmail
-                  ? const [AutofillHints.username, AutofillHints.email]
-                  : const [AutofillHints.telephoneNumber],
-              decoration: InputDecoration(
-                labelText: _isSignInUsingEmail ? 'Email' : 'Mobile number',
-                prefixIcon: Icon(
-                  _isSignInUsingEmail
-                      ? Icons.mail_outline_rounded
-                      : Icons.call_outlined,
-                ),
-                prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
-              ),
-              onChanged: (_) => _handleSignInIdentifierChanged(),
-            ),
-          ] else ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 230,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedSignInChannel,
-                    decoration: const InputDecoration(labelText: 'Continue with'),
-                    items: _signInChannelOptions.keys
-                        .map(
-                          (label) => DropdownMenuItem<String>(
-                            value: label,
-                            child: Text(label, overflow: TextOverflow.ellipsis),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() {
-                        _selectedSignInChannel = value;
-                        _errorMessage = null;
-                        _resetOtpJourney();
-                        _syncSignInIdentifierWithSelection();
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _signInIdentifierController,
-                    keyboardType: _isSignInUsingEmail
-                        ? TextInputType.emailAddress
-                        : TextInputType.phone,
-                    autofillHints: _isSignInUsingEmail
-                        ? const [AutofillHints.username, AutofillHints.email]
-                        : const [AutofillHints.telephoneNumber],
-                    decoration: InputDecoration(
-                      labelText: _isSignInUsingEmail ? 'Email' : 'Mobile number',
-                      prefixIcon: Icon(
-                        _isSignInUsingEmail
-                            ? Icons.mail_outline_rounded
-                            : Icons.call_outlined,
-                      ),
-                      prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
-                    ),
-                    onChanged: (_) => _handleSignInIdentifierChanged(),
-                  ),
-                ),
-              ],
-            ),
           ],
+          TextField(
+            controller: _signInIdentifierController,
+            keyboardType:
+                _isSignInUsingEmail ? TextInputType.emailAddress : TextInputType.phone,
+            autofillHints: _isSignInUsingEmail
+                ? const [AutofillHints.username, AutofillHints.email]
+                : const [AutofillHints.telephoneNumber],
+            decoration: InputDecoration(
+              labelText: _isSignInUsingEmail ? 'Email address' : 'Mobile number',
+              helperText: _isSignInUsingEmail
+                  ? 'Use this for App Review demo credentials and password sign-in.'
+                  : 'Use mobile sign-in with OTP.',
+              prefixIcon: Icon(
+                _isSignInUsingEmail
+                    ? Icons.mail_outline_rounded
+                    : Icons.call_outlined,
+              ),
+              prefixText: _isSignInUsingEmail ? null : '$_selectedDialCode ',
+            ),
+            onChanged: (_) => _handleSignInIdentifierChanged(),
+          ),
           SizedBox(height: spacing),
           Text(
-            'Choose ${_isSignInUsingEmail ? 'password or OTP' : 'OTP or switch to email for password sign-in'}.',
+            _isSignInUsingEmail
+                ? 'Choose password or OTP for email sign-in.'
+                : 'Mobile sign-in uses OTP. Switch to Email for password sign-in.',
             style: textTheme.bodySmall,
           ),
           SizedBox(height: spacing),
@@ -2071,7 +2059,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             selected: <_AuthMethod>{_selectedAuthMethod},
             onSelectionChanged: (selection) {
               setState(() {
-                _selectedAuthMethod = selection.first;
+                final chosen = selection.first;
+                _selectedAuthMethod =
+                    !_isSignInUsingEmail && chosen == _AuthMethod.password
+                        ? _AuthMethod.otp
+                        : chosen;
                 _errorMessage = null;
                 _resetOtpJourney();
               });
@@ -3868,6 +3860,45 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       child: const Text('Send Reset Email'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Account deletion',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Permanently delete your sign-in account and MedicoHub profile. Your own question threads are removed from public lists.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _deleteAccountBusy ? null : _openDeleteAccountDialog,
+                        icon: _deleteAccountBusy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.delete_forever_outlined),
+                        label: const Text('Delete Account'),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton(
@@ -5953,6 +5984,143 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     newPasswordController.dispose();
   }
 
+  Future<void> _openDeleteAccountDialog() async {
+    final user = _activeUser;
+    if (user == null) {
+      return;
+    }
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    var dialogBusy = false;
+    var passwordVisible = false;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Delete Account'),
+              content: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'This permanently deletes your Firebase sign-in account and MedicoHub profile for ${user.email}. Your own question threads are removed from public lists.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: !passwordVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Current password',
+                        suffixIcon: IconButton(
+                          onPressed: () => setDialogState(
+                            () => passwordVisible = !passwordVisible,
+                          ),
+                          icon: Icon(
+                            passwordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmController,
+                      decoration: const InputDecoration(
+                        labelText: 'Type DELETE to confirm',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: dialogBusy
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  ),
+                  onPressed: dialogBusy
+                      ? null
+                      : () async {
+                          if (passwordController.text.isEmpty ||
+                              confirmController.text.trim().toUpperCase() !=
+                                  'DELETE') {
+                            setState(() {
+                              _errorMessage =
+                                  'Enter your password and type DELETE to confirm account deletion.';
+                            });
+                            return;
+                          }
+                          setDialogState(() => dialogBusy = true);
+                          await _deleteAccount(
+                            password: passwordController.text.trim(),
+                          );
+                          if (dialogContext.mounted && _activeUser == null) {
+                            Navigator.of(dialogContext).pop();
+                          } else {
+                            setDialogState(() => dialogBusy = false);
+                          }
+                        },
+                  child: Text(dialogBusy ? 'Deleting...' : 'Delete Permanently'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    passwordController.dispose();
+    confirmController.dispose();
+  }
+
+  Future<void> _deleteAccount({required String password}) async {
+    final user = _activeUser;
+    if (user == null) {
+      return;
+    }
+    setState(() {
+      _deleteAccountBusy = true;
+      _errorMessage = null;
+    });
+    try {
+      await _auth.deleteCurrentAccount(
+        email: user.email,
+        currentPassword: password,
+      );
+      await _api.deleteUserAccount(userId: user.id, actorId: user.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _deleteAccountBusy = false;
+        _activeUser = null;
+        _createAccountMode = false;
+        _voiceStatus = 'Your MedicoHub account has been deleted.';
+        _questions = const [];
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _deleteAccountBusy = false;
+        _errorMessage =
+            'Could not delete account: ${_firebaseFriendlyError(error)}';
+      });
+    }
+  }
+
   Future<void> _openNotificationLink(String url) async {
     final uri = Uri.parse(url);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -6391,10 +6559,23 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       if (!mounted) {
         return;
       }
+      final message = _friendlyMicrophoneError(error);
       setState(() {
-        _voiceStatus = 'Audio recorder unavailable: $error';
+        _recordingAudio = false;
+        _voiceStatus = message;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
+  }
+
+  String _friendlyMicrophoneError(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('permission') || raw.contains('denied')) {
+      return 'Microphone access was not enabled. Please allow microphone access in the device permission prompt or Settings before recording an audio note.';
+    }
+    return 'Audio recording is not available on this device right now. You can still type your question or attach a file.';
   }
 
   Future<void> _stopAudioRecording() async {

@@ -144,6 +144,35 @@ class FirebaseAuthService {
     }
   }
 
+  Future<void> deleteCurrentAccount({
+    required String email,
+    required String currentPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) {
+        throw const FirebaseAuthDiagnosticException(
+          operation: 'deleteCurrentAccount',
+          summary: 'No authenticated Firebase user is available.',
+          details: 'Sign in again before deleting the account.',
+        );
+      }
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.delete();
+    } catch (error, stackTrace) {
+      throw _wrapException(
+        operation: 'deleteCurrentAccount',
+        error: error,
+        stackTrace: stackTrace,
+        email: email,
+      );
+    }
+  }
+
   FirebaseAuthDiagnosticException _wrapException({
     required String operation,
     required Object error,

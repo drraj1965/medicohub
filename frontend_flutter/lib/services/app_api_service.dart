@@ -534,6 +534,18 @@ class AppApiService {
     _ensureSuccess(response, 'delete question');
   }
 
+  Future<void> deleteUserAccount({
+    required String userId,
+    required String actorId,
+  }) async {
+    final response = await _client.delete(
+      Uri.parse('$_baseUrl/users/$userId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'actor_id': actorId}),
+    );
+    _ensureSuccess(response, 'delete user account');
+  }
+
   Future<UploadedAttachment> uploadAttachment({
     required String ownerId,
     required String fileName,

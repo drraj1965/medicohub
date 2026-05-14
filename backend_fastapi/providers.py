@@ -14,9 +14,11 @@ from google.oauth2 import service_account
 
 try:
     from .config import get_settings
+    from .models import utc_now
     from .storage import load_db, save_db
 except ImportError:
     from config import get_settings  # type: ignore
+    from models import utc_now  # type: ignore
     from storage import load_db, save_db  # type: ignore
 
 
@@ -29,6 +31,9 @@ class Repository(ABC):
 
     @abstractmethod
     def upsert_user(self, user: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def delete_user(self, user_id: str) -> dict[str, Any] | None: ...
 
     @abstractmethod
     def list_questions(self) -> list[dict[str, Any]]: ...
@@ -153,6 +158,23 @@ class LocalJsonRepository(Repository):
         users.append(user)
         save_db(db)
         return user
+
+    def delete_user(self, user_id: str) -> dict[str, Any] | None:
+        db = self._db()
+        users = db["users"]
+        for index, existing in enumerate(users):
+            if existing["id"] == user_id:
+                removed = users.pop(index)
+                for question in db["questions"]:
+                    if question.get("author_id") == user_id:
+                        question["status"] = "deleted"
+                        question["updated_at"] = utc_now().isoformat()
+                    for message in question.get("thread_messages", []):
+                        if message.get("actor_id") == user_id:
+                            message["moderation_state"] = "hidden"
+                save_db(db)
+                return removed
+        return None
 
     def _remap_user_references(self, db: dict[str, Any], old_id: str, new_id: str) -> None:
         for question in db["questions"]:
@@ -394,6 +416,27 @@ class FirestoreRepository(Repository):
                 match.reference.delete()
         self._collection("users").document(user["id"]).set(user)
         return user
+
+    def delete_user(self, user_id: str) -> dict[str, Any] | None:
+        snap = self._collection("users").document(user_id).get()
+        if not snap.exists:
+            return None
+        removed = self._decode(snap.to_dict())
+        for question_snap in self._collection("questions").stream():
+            question = self._decode(question_snap.to_dict())
+            changed = False
+            if question.get("author_id") == user_id:
+                question["status"] = "deleted"
+                question["updated_at"] = utc_now().isoformat()
+                changed = True
+            for message in question.get("thread_messages", []):
+                if message.get("actor_id") == user_id:
+                    message["moderation_state"] = "hidden"
+                    changed = True
+            if changed:
+                question_snap.reference.set(question)
+        snap.reference.delete()
+        return removed
 
     def _remap_user_references(self, old_id: str, new_id: str) -> None:
         for snap in self._collection("questions").stream():
