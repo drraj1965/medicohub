@@ -52,6 +52,7 @@ try:
         list_title_templates,
         list_users,
         lookup_user_by_email,
+        lookup_user_by_phone,
         moderate_thread_message,
         request_otp,
         resolve_report_pdf,
@@ -116,6 +117,7 @@ except ImportError:
         list_title_templates,
         list_users,
         lookup_user_by_email,
+        lookup_user_by_phone,
         moderate_thread_message,
         request_otp,
         resolve_report_pdf,
@@ -133,7 +135,7 @@ except ImportError:
     from storage import read_audit  # type: ignore
 
 
-app = FastAPI(title="MedicoHub Backend", version="1.3.8")
+app = FastAPI(title="MedicoHub Backend", version="1.3.10")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -189,6 +191,11 @@ def add_doctor(payload: DoctorInviteCreate) -> dict:
 @app.get("/users/lookup/by-email")
 def lookup_user(email: str) -> dict | None:
     return lookup_user_by_email(email)
+
+
+@app.get("/users/lookup/by-phone")
+def lookup_user_phone(phone_number: str) -> dict | None:
+    return lookup_user_by_phone(phone_number)
 
 
 @app.get("/users/{user_id}")

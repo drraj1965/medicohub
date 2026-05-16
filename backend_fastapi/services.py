@@ -883,6 +883,13 @@ def lookup_user_by_email(email: str) -> dict | None:
     return _serialize_user(user)
 
 
+def lookup_user_by_phone(phone_number: str) -> dict | None:
+    user = _find_user_by_email_or_phone(None, phone_number)
+    if user is None:
+        return None
+    return _serialize_user(user)
+
+
 def list_doctors() -> list[dict]:
     doctors = [
         _serialize_user(user)

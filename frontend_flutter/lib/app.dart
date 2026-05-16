@@ -165,14 +165,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final TextEditingController _signInIdentifierController =
       TextEditingController();
   final TextEditingController _otpCodeController = TextEditingController();
-  final TextEditingController _emailController =
-      TextEditingController(text: 'drphaniraj1965@gmail.com');
-  final TextEditingController _passwordController =
-      TextEditingController(text: 'Passw0rd!');
-  final TextEditingController _displayNameController =
-      TextEditingController(text: 'Rajshekher Garikapati');
-  final TextEditingController _phoneController =
-      TextEditingController(text: '+919000611048');
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _displayNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _adminTitleController = TextEditingController();
   final TextEditingController _doctorInviteNameController =
       TextEditingController();
@@ -268,6 +264,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String? _authLookupMessage;
   String? _otpStatusMessage;
   String? _otpRequestedDestination;
+  String? _phoneVerificationId;
   String? _voiceStatus;
   String? _audioAttachmentPath;
   SharedPreferences? _prefs;
@@ -361,6 +358,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _loadThemePreferences(prefs);
       _loadUpdatePreferences(prefs);
       _loadAdPreferences(prefs);
+      _loadAuthPreferences(prefs);
       final currentVersion = await _updateService.currentVersion();
       if (_updateService.shouldCheck(
         prefs: prefs,
@@ -410,10 +408,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             _notificationSettings?.whatsAppActivationTarget ?? '';
         _emailStatusNoteController.text =
             _notificationSettings?.emailStatusNote ?? '';
-        _errorMessage =
-            attempt < 6
-                ? 'Backend at ${_api.baseUrl} is waking up. Retrying automatically...'
-                : 'Backend not reachable at ${_api.baseUrl}. If this is a public deployment, wait a moment and reopen the app. For local Android testing, start the backend on your laptop and use adb reverse or rebuild the APK with your laptop Wi-Fi URL.';
+        _errorMessage = attempt < 6
+            ? null
+            : 'Service is taking longer than expected to become available. Please try again in a moment.';
+        _voiceStatus = attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
       });
       if (attempt < 6) {
         _backendRetryTimer?.cancel();
@@ -493,8 +491,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             _notificationSettings?.emailStatusNote ?? '';
         _adCampaigns = const [];
         _errorMessage = attempt < 6
-            ? 'Public backend is still warming up. Retrying automatically...'
-            : 'Could not load backend data: $error';
+            ? null
+            : 'Could not load service data right now. Please try again in a moment.';
+        _voiceStatus = attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
       });
       if (attempt < 6) {
         _backendRetryTimer?.cancel();
@@ -514,6 +513,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _themeCustomHexKey = 'theme_custom_hex';
   static const String _themeCustomDarkKey = 'theme_custom_dark';
   static const String _useTestAdsPreferenceKey = 'ads_use_test_units';
+  static const String _lastEmailPreferenceKey = 'auth_last_email';
+  static const String _lastPhonePreferenceKey = 'auth_last_phone';
 
   void _loadThemePreferences(SharedPreferences prefs) {
     final presetName = prefs.getString(_themePresetKey);
@@ -541,6 +542,28 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _customThemeDarkMode = customDark;
     _themeHexInvalid = false;
     widget.onThemeChanged(config);
+  }
+
+  void _loadAuthPreferences(SharedPreferences prefs) {
+    _emailController.text = prefs.getString(_lastEmailPreferenceKey) ?? '';
+    _phoneController.text = prefs.getString(_lastPhonePreferenceKey) ?? '';
+    _syncSignInIdentifierWithSelection();
+  }
+
+  Future<void> _persistAuthPreferences({
+    String? email,
+    String? phone,
+  }) async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    if (email != null && email.trim().isNotEmpty) {
+      await prefs.setString(_lastEmailPreferenceKey, email.trim());
+    }
+    if (phone != null && phone.trim().isNotEmpty) {
+      await prefs.setString(_lastPhonePreferenceKey, phone.trim());
+    }
   }
 
   Future<void> _persistThemePreferences(MedicoHubThemeConfig config) async {
@@ -1174,6 +1197,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _otpCodeController.clear();
     _otpStatusMessage = null;
     _otpRequestedDestination = null;
+    _phoneVerificationId = null;
   }
 
   void _switchAuthSurface({
@@ -4644,6 +4668,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _errorMessage = null;
     });
     try {
+      await _api.waitUntilReady();
       final firebaseUser = await _auth.signInWithEmail(
         email: email,
         password: _passwordController.text,
@@ -4661,6 +4686,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _phoneController.text = profile.phoneNumber ?? _phoneController.text;
         _resetOtpJourney();
       });
+      await _persistAuthPreferences(
+        email: email,
+        phone: profile.phoneNumber,
+      );
       await _refreshNotifications(profile.id);
     } catch (error) {
       if (!mounted) {
@@ -4679,6 +4708,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _errorMessage = null;
     });
     try {
+      await _api.waitUntilReady();
       _prevalidateRegistration();
       final firebaseUser = await _auth.registerWithEmail(
         email: _emailController.text.trim(),
@@ -4708,6 +4738,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _selectedSignInChannel = 'Email';
         _syncSignInIdentifierWithSelection();
       });
+      await _persistAuthPreferences(
+        email: profile.email,
+        phone: profile.phoneNumber,
+      );
       await _refreshNotifications(profile.id);
     } catch (error) {
       if (!mounted) {
@@ -4877,9 +4911,29 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _otpStatusMessage = null;
     });
     try {
+      if (!_isSignInUsingEmail) {
+        final verificationId = await _auth.requestPhoneOtp(
+          phoneNumber: destination,
+          onAutoVerified: (firebaseUser) async {
+            await _completePhoneSignIn(firebaseUser);
+          },
+        );
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _authBusy = false;
+          _otpRequested = true;
+          _otpRequestedDestination = destination;
+          _phoneVerificationId = verificationId;
+          _otpStatusMessage =
+              'OTP sent by Firebase. Enter the SMS code when it arrives.';
+        });
+        return;
+      }
       final result = await _api.requestOtp(
         destination: destination,
-        channel: _isSignInUsingEmail ? 'email' : 'sms',
+        channel: 'email',
       );
       if (!mounted) {
         return;
@@ -4923,10 +4977,22 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _errorMessage = null;
     });
     try {
+      if (!_isSignInUsingEmail) {
+        final verificationId = _phoneVerificationId;
+        if (verificationId == null || verificationId.isEmpty) {
+          throw Exception('No Firebase phone verification session is active.');
+        }
+        final firebaseUser = await _auth.verifyPhoneOtp(
+          verificationId: verificationId,
+          smsCode: _otpCodeController.text.trim(),
+        );
+        await _completePhoneSignIn(firebaseUser);
+        return;
+      }
       final destination = _otpRequestedDestination ?? _formattedSignInDestination;
       final profile = await _api.verifyOtp(
         destination: destination,
-        channel: _isSignInUsingEmail ? 'email' : 'sms',
+        channel: 'email',
         code: _otpCodeController.text.trim(),
       );
       if (!mounted) {
@@ -4952,6 +5018,36 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = 'Could not verify the OTP. Please try again.';
       });
     }
+  }
+
+  Future<void> _completePhoneSignIn(UserProfile firebaseUser) async {
+    final phone = _otpRequestedDestination ?? _formattedSignInDestination;
+    await _api.waitUntilReady();
+    final profile = await _api.lookupUserByPhone(phone);
+    if (profile == null) {
+      throw Exception(
+        'No existing MedicoHub account matches this mobile number. Register with email first, then add the mobile number to the profile.',
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _activeUser = profile;
+      _selectedLanguage =
+          profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+      _emailController.text = profile.email;
+      _phoneController.text = profile.phoneNumber ?? phone;
+      _authBusy = false;
+      _voiceStatus = 'Signed in successfully.';
+      _resetOtpJourney();
+      _phoneVerificationId = null;
+    });
+    await _persistAuthPreferences(
+      email: profile.email,
+      phone: profile.phoneNumber ?? phone,
+    );
+    await _refreshNotifications(profile.id);
   }
 
   Future<UserProfile> _loadOrCreateBackendProfile(UserProfile firebaseUser) async {

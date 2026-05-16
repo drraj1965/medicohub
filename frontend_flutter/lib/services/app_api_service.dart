@@ -60,6 +60,23 @@ class AppApiService {
     }
   }
 
+  Future<void> waitUntilReady({
+    int attempts = 6,
+    Duration initialDelay = const Duration(seconds: 2),
+  }) async {
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      if (await checkHealth()) {
+        return;
+      }
+      if (attempt < attempts - 1) {
+        await Future<void>.delayed(
+          Duration(seconds: initialDelay.inSeconds + (attempt * 3)),
+        );
+      }
+    }
+    throw Exception('Backend is temporarily unavailable.');
+  }
+
   Future<List<EducationItem>> fetchEducation() async {
     final response = await _client
         .get(Uri.parse('$_baseUrl/education/library'))
@@ -186,6 +203,21 @@ class AppApiService {
       return null;
     }
     _ensureSuccess(response, 'user lookup');
+    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<UserProfile?> lookupUserByPhone(String phoneNumber) async {
+    final response = await _client.get(
+      Uri.parse(
+        '$_baseUrl/users/lookup/by-phone?phone_number=${Uri.encodeQueryComponent(phoneNumber)}',
+      ),
+    ).timeout(_requestTimeout);
+    if (response.statusCode == 404 ||
+        response.body.trim().isEmpty ||
+        response.body.trim() == 'null') {
+      return null;
+    }
+    _ensureSuccess(response, 'user lookup by phone');
     return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
