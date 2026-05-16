@@ -82,8 +82,6 @@ const Map<String, String> _defaultDialCodeByCountry = <String, String>{
 
 enum _QuestionFeedScope { mine, public }
 
-enum _AuthMethod { password, otp }
-
 enum _QuestionDateFilter {
   allTime,
   last7Days,
@@ -201,6 +199,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final TextEditingController _adPriorityController =
       TextEditingController(text: '50');
   final ScrollController _authScrollController = ScrollController();
+  final FocusNode _signInIdentifierFocusNode = FocusNode();
+  final FocusNode _signupEmailFocusNode = FocusNode();
 
   bool _premium = false;
   bool _loading = true;
@@ -243,7 +243,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   UpdateCheckFrequency _updateFrequency = UpdateCheckFrequency.daily;
   _QuestionFeedScope _questionFeedScope = _QuestionFeedScope.mine;
   _QuestionDateFilter _questionDateFilter = _QuestionDateFilter.allTime;
-  _AuthMethod _selectedAuthMethod = _AuthMethod.password;
   String _selectedAdPlacement = 'home';
   String _selectedAdLanguage = 'English';
 
@@ -333,6 +332,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _appOpenAd?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _voiceService.dispose();
+    _signInIdentifierFocusNode.dispose();
+    _signupEmailFocusNode.dispose();
     super.dispose();
   }
 
@@ -375,6 +376,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _currentVersion = currentVersion;
         _loading = false;
       });
+      _signInIdentifierFocusNode.addListener(_handleSignInIdentifierFocusChange);
+      _signupEmailFocusNode.addListener(_handleSignupEmailFocusChange);
       if (updateInfo != null) {
         unawaited(_handleAutoUpdateIfNeeded(updateInfo));
       }
@@ -476,7 +479,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _emailStatusNoteController.text =
           _notificationSettings?.emailStatusNote ?? '';
       _initializeMobileAdsIfNeeded();
-      _scheduleIdentityLookup();
     } catch (error) {
       if (!mounted) {
         return;
@@ -1192,6 +1194,18 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  void _handleSignInIdentifierFocusChange() {
+    if (!_signInIdentifierFocusNode.hasFocus) {
+      unawaited(_lookupIdentityForCurrentIdentifier());
+    }
+  }
+
+  void _handleSignupEmailFocusChange() {
+    if (!_signupEmailFocusNode.hasFocus) {
+      unawaited(_lookupIdentityForCurrentEmail());
+    }
+  }
+
   void _resetOtpJourney() {
     _otpRequested = false;
     _otpCodeController.clear();
@@ -1202,15 +1216,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   void _switchAuthSurface({
     required bool createAccountMode,
-    _AuthMethod? authMethod,
   }) {
     setState(() {
       _createAccountMode = createAccountMode;
       _errorMessage = null;
       _authLookupMessage = null;
-      if (authMethod != null) {
-        _selectedAuthMethod = authMethod;
-      }
       if (!createAccountMode) {
         _signupPolicyAccepted = false;
       }
@@ -1269,24 +1279,28 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               ],
             )
           : null,
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : !signedIn
-                ? _buildLoginGate(context)
-                : Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: IndexedStack(
-                      index: _tabIndex.clamp(0, 4),
-                      children: [
-                        _buildHomeTab(context),
-                        _buildAskTab(context),
-                        _buildQuestionsTab(context),
-                        _buildEducationTab(context),
-                        _buildSettingsTab(context),
-                      ],
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SafeArea(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : !signedIn
+                  ? _buildLoginGate(context)
+                  : Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: IndexedStack(
+                        index: _tabIndex.clamp(0, 4),
+                        children: [
+                          _buildHomeTab(context),
+                          _buildAskTab(context),
+                          _buildQuestionsTab(context),
+                          _buildEducationTab(context),
+                          _buildSettingsTab(context),
+                        ],
+                      ),
                     ),
-                  ),
+        ),
       ),
     );
   }
@@ -1313,6 +1327,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ? _brandIconDarkAsset
                     : _brandIconLightAsset,
                 fit: BoxFit.cover,
+                alignment: Alignment.center,
                 width: 36,
                 height: 36,
               ),
@@ -1341,9 +1356,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: Center(
-            child: Chip(
+            child: ActionChip(
               avatar: const Icon(Icons.person_outline_rounded, size: 18),
               label: Text(user.displayName.split(' ').first),
+              onPressed: () => setState(() => _tabIndex = 4),
             ),
           ),
         ),
@@ -1591,10 +1607,45 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     );
   }
 
+  Future<void> _showEducationItemSheet(EducationItem item) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.category.toUpperCase(),
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    item.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                  const SizedBox(height: 16),
+                  Text(item.summary),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildLoginGate(BuildContext context) {
     final isSignup = _createAccountMode;
-    final showPassword = !isSignup && _selectedAuthMethod == _AuthMethod.password;
-    final showOtpActions = !isSignup && _selectedAuthMethod == _AuthMethod.otp;
+    final showPassword = !isSignup;
+    const showOtpActions = false;
     final brandAsset =
         Theme.of(context).brightness == Brightness.dark ? _brandDarkAsset : _brandLightAsset;
     final media = MediaQuery.of(context);
@@ -1819,6 +1870,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         if (isSignup) ...[
           TextField(
             controller: _displayNameController,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
               labelText: 'Full name',
               prefixIcon: Icon(Icons.person_outline_rounded),
@@ -1828,6 +1881,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           if (compact) ...[
             TextField(
               controller: _emailController,
+              focusNode: _signupEmailFocusNode,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autocorrect: false,
+              enableSuggestions: false,
               decoration: const InputDecoration(
                 labelText: 'Email',
                 prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -1837,6 +1895,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Mobile number',
                 prefixIcon: Icon(Icons.call_outlined),
@@ -1884,6 +1943,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 Expanded(
                   child: TextField(
                     controller: _emailController,
+                    focusNode: _signupEmailFocusNode,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -1895,6 +1959,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   child: TextField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'Mobile number',
                       prefixIcon: Icon(Icons.call_outlined),
@@ -1993,9 +2058,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       useEmail ? 'Email' : _defaultSignInChannelForLocale();
                   _errorMessage = null;
                   _resetOtpJourney();
-                  if (!useEmail && _selectedAuthMethod == _AuthMethod.password) {
-                    _selectedAuthMethod = _AuthMethod.otp;
-                  }
                   _syncSignInIdentifierWithSelection();
                 });
               },
@@ -2033,16 +2095,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ],
           TextField(
             controller: _signInIdentifierController,
+            focusNode: _signInIdentifierFocusNode,
             keyboardType:
                 _isSignInUsingEmail ? TextInputType.emailAddress : TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            autocorrect: false,
+            enableSuggestions: false,
             autofillHints: _isSignInUsingEmail
                 ? const [AutofillHints.username, AutofillHints.email]
                 : const [AutofillHints.telephoneNumber],
             decoration: InputDecoration(
               labelText: _isSignInUsingEmail ? 'Email address' : 'Mobile number',
               helperText: _isSignInUsingEmail
-                  ? 'Use this for App Review demo credentials and password sign-in.'
-                  : 'Use mobile sign-in with OTP.',
+                  ? 'Use the email address registered with your account.'
+                  : 'Use the mobile number registered with your account.',
               prefixIcon: Icon(
                 _isSignInUsingEmail
                     ? Icons.mail_outline_rounded
@@ -2054,44 +2120,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ),
           SizedBox(height: spacing),
           Text(
-            _isSignInUsingEmail
-                ? 'Choose password or OTP for email sign-in.'
-                : 'Mobile sign-in uses OTP. Switch to Email for password sign-in.',
+            'Use the same password with either your email address or your registered mobile number.',
             style: textTheme.bodySmall,
-          ),
-          SizedBox(height: spacing),
-          SegmentedButton<_AuthMethod>(
-            showSelectedIcon: false,
-            style: compact
-                ? const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  )
-                : null,
-            segments: const [
-              ButtonSegment<_AuthMethod>(
-                value: _AuthMethod.password,
-                icon: Icon(Icons.password_rounded),
-                label: Text('Password'),
-              ),
-              ButtonSegment<_AuthMethod>(
-                value: _AuthMethod.otp,
-                icon: Icon(Icons.sms_outlined),
-                label: Text('OTP'),
-              ),
-            ],
-            selected: <_AuthMethod>{_selectedAuthMethod},
-            onSelectionChanged: (selection) {
-              setState(() {
-                final chosen = selection.first;
-                _selectedAuthMethod =
-                    !_isSignInUsingEmail && chosen == _AuthMethod.password
-                        ? _AuthMethod.otp
-                        : chosen;
-                _errorMessage = null;
-                _resetOtpJourney();
-              });
-            },
           ),
           SizedBox(height: spacing),
         ],
@@ -2129,6 +2159,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           TextField(
             controller: _passwordController,
             obscureText: !_signInPasswordVisible,
+            textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.password],
             decoration: InputDecoration(
               labelText: 'Password',
@@ -2149,6 +2180,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           TextField(
             controller: _passwordController,
             obscureText: !_passwordVisible,
+            textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.newPassword],
             decoration: InputDecoration(
               labelText: 'Create password',
@@ -2202,10 +2234,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         ],
         if (_errorMessage != null) ...[
           const SizedBox(height: 10),
-          Text(
-            _errorMessage!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          _buildErrorNotice(context, _errorMessage!),
         ],
         SizedBox(height: compact ? 16 : 20),
         SizedBox(
@@ -2248,7 +2277,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ? null
                     : () => _switchAuthSurface(
                           createAccountMode: !isSignup,
-                          authMethod: _AuthMethod.password,
                         ),
                 child: Text(isSignup ? 'Back to Sign In' : 'Register'),
               ),
@@ -2336,16 +2364,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return ListView(
       children: [
         if (_errorMessage != null) ...[
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                _errorMessage!,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error),
-              ),
-            ),
-          ),
+          _buildErrorNotice(context, _errorMessage!),
           const SizedBox(height: 16),
         ],
         _buildHeroCard(context),
@@ -2676,15 +2695,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   avatar: const Icon(Icons.language_rounded, size: 18),
                   label: Text(_selectedLanguage),
                 ),
-                Chip(
+                ActionChip(
                   avatar: const Icon(Icons.bolt_rounded, size: 18),
                   label: Text('${
                     _roleScopedQuestions.where((item) => item.status == 'open').length
                   } open threads'),
+                  onPressed: () => setState(() => _tabIndex = 2),
                 ),
-                Chip(
+                ActionChip(
                   avatar: const Icon(Icons.auto_stories_rounded, size: 18),
                   label: Text('${_education.length} education items'),
+                  onPressed: () => setState(() => _tabIndex = 3),
                 ),
               ],
             ),
@@ -3060,6 +3081,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       'Use simple, searchable words like stroke, fits, tremor, Parkinson, migraine, or dizziness so question classification works better later.',
                   child: TextField(
                     controller: _titleController,
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       labelText: 'Title',
                       helperText: _isAdminView
@@ -3072,6 +3094,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 TextField(
                   controller: _bodyController,
                   maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration:
                       const InputDecoration(labelText: 'Question details'),
                 ),
@@ -3081,6 +3104,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 TextField(
                   controller: _symptomsController,
                   maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
                     labelText: 'Symptoms summary / current diagnosis',
                   ),
@@ -3268,14 +3292,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         ? 'Select dates'
         : '${range.start.day}/${range.start.month}/${range.start.year} → ${range.end.day}/${range.end.month}/${range.end.year}';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Sort & Filter',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
+      child: ExpansionTile(
+        leading: const Icon(Icons.tune_rounded),
+        title: const Text('Sort & Filter'),
+        subtitle: Text(
+          _questionFilterTopic == null
+              ? _questionDateFilter.label
+              : '${_questionDateFilter.label} • $_questionFilterTopic',
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        children: [
             DropdownButtonFormField<_QuestionDateFilter>(
               initialValue: _questionDateFilter,
               decoration: const InputDecoration(labelText: 'Date range'),
@@ -3336,8 +3362,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 setState(() => _questionFilterTopic = value);
               },
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -3429,21 +3454,25 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.category.toUpperCase(),
-                            style: Theme.of(context).textTheme.labelLarge),
-                        const SizedBox(height: 8),
-                        Text(item.title,
-                            style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 8),
-                        Text(item.summary),
-                        const SizedBox(height: 12),
-                        Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
-                      ],
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _showEducationItemSheet(item),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.category.toUpperCase(),
+                              style: Theme.of(context).textTheme.labelLarge),
+                          const SizedBox(height: 8),
+                          Text(item.title,
+                              style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 8),
+                          Text(item.summary),
+                          const SizedBox(height: 12),
+                          Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -3537,6 +3566,39 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorNotice(BuildContext context, String message) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: kDebugMode ? colors.error : colors.errorContainer,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (kDebugMode) ...[
+            Text(
+              'Debug notice',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colors.onErrorContainer,
+                  ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Text(
+            message,
+            style: TextStyle(color: colors.onErrorContainer),
+          ),
+        ],
       ),
     );
   }
@@ -4649,13 +4711,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _signInWithFirebase() async {
-    final email = _formattedSignInDestination;
+    var email = _formattedSignInDestination;
     if (!_isSignInUsingEmail) {
-      setState(() {
-        _errorMessage =
-            'Password sign-in currently works with email. Switch the first field to Email or choose OTP for mobile sign-in.';
-      });
-      return;
+      final profile = await _api.lookupUserByPhone(email);
+      if (profile == null || profile.email.isEmpty) {
+        setState(() {
+          _errorMessage =
+              'No account was found for this mobile number. Try your email address or register first.';
+        });
+        return;
+      }
+      email = profile.email;
     }
     if (email.isEmpty || !email.contains('@')) {
       setState(() {
@@ -4863,6 +4929,43 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       setState(() {
         _identityLookupBusy = false;
         _authLookupMessage = 'Could not verify this email yet: $error';
+      });
+    }
+  }
+
+  Future<void> _lookupIdentityForCurrentIdentifier() async {
+    if (_createAccountMode) {
+      return;
+    }
+    if (_isSignInUsingEmail) {
+      _emailController.text = _signInIdentifierController.text.trim();
+      await _lookupIdentityForCurrentEmail();
+      return;
+    }
+    final phone = _formattedSignInDestination;
+    if (phone.isEmpty) {
+      return;
+    }
+    setState(() => _identityLookupBusy = true);
+    try {
+      final matched = await _api.lookupUserByPhone(phone);
+      if (!mounted || _formattedSignInDestination != phone) {
+        return;
+      }
+      setState(() {
+        _matchedRosterUser = matched;
+        _identityLookupBusy = false;
+        _authLookupMessage = matched == null
+            ? 'No existing account found for this mobile number.'
+            : 'Existing ${matched.role} found: ${matched.displayName}. Use Sign In to continue.';
+      });
+    } catch (_) {
+      if (!mounted || _formattedSignInDestination != phone) {
+        return;
+      }
+      setState(() {
+        _identityLookupBusy = false;
+        _authLookupMessage = null;
       });
     }
   }
@@ -6761,8 +6864,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _voiceStatus = Platform.isAndroid
-            ? 'Native speech bridge is not active in this Android build yet. Use Gboard or Indic keyboard mic for $_selectedLanguage.'
-            : 'Native speech bridge is not connected on this Windows build yet. Use audio note mode or Windows dictation plus keyboard entry.';
+            ? 'Use the keyboard microphone in Gboard or your preferred Indic keyboard for $_selectedLanguage.'
+            : Platform.isIOS || Platform.isMacOS
+                ? 'Use Apple Dictation from the iPhone, iPad, or Mac keyboard microphone to enter speech directly into this field.'
+                : 'Use your system dictation keyboard or audio note mode.';
       });
       return;
     }
@@ -6811,7 +6916,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Future<void> _showKeyboardVoiceHelp() async {
     final text = '${_voiceService.keyboardVoiceInstructions()} '
         'Preferred language: $_selectedLanguage. '
-        'On Android, Gboard or Indic Keyboard microphone is recommended.';
+        '${Platform.isIOS || Platform.isMacOS ? 'On Apple devices, use the built-in keyboard microphone / Dictation key.' : 'On Android, Gboard or Indic Keyboard microphone is recommended.'}';
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) {
       return;
@@ -6982,7 +7087,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _voiceStatus = null;
       _editingQuestionId = null;
       _notifications = const [];
-      _selectedAuthMethod = _AuthMethod.password;
       _selectedSignInChannel = _defaultSignInChannelForLocale();
       _syncSignInIdentifierWithSelection();
       _resetOtpJourney();
