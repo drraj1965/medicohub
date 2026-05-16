@@ -8,7 +8,8 @@ Deploy the always-on FastAPI backend from `backend_fastapi/`.
 cd backend_fastapi
 fly auth login
 fly apps create medicohub-backend
-fly secrets set GOOGLE_SERVICE_ACCOUNT_JSON="$(Get-Content ..\secrets\medicohub-firebase-admin.json -Raw)"
+$jsonB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content ..\secrets\medicohub-firebase-admin.json -Raw)))
+fly secrets set GOOGLE_SERVICE_ACCOUNT_JSON_B64=$jsonB64
 ```
 
 Set only the email or Twilio secrets that are actually in use:

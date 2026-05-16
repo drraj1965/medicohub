@@ -14,7 +14,7 @@ class AppApiService {
   static final String _baseUrl = _resolveBaseUrl();
   static const Duration _requestTimeout = Duration(seconds: 8);
   static const String _publicBackendUrl =
-      'https://medicohub-backend-u5i5.onrender.com';
+      'https://medicohub-backend.fly.dev';
 
   String get baseUrl => _baseUrl;
 

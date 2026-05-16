@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from base64 import b64decode
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -51,9 +52,15 @@ class Settings:
     otp_code_ttl_minutes: int
 
     def google_service_account_info(self) -> dict | None:
+        encoded = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_B64", "").strip()
+        if encoded:
+            return json.loads(b64decode(encoded).decode("utf-8"))
         if not self.google_service_account_json.lstrip().startswith("{"):
             return None
         return json.loads(self.google_service_account_json)
+
+    def has_google_service_account_credentials(self) -> bool:
+        return bool(self.google_service_account_json or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_B64", "").strip())
 
 
 @lru_cache(maxsize=1)

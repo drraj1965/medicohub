@@ -385,7 +385,7 @@ class LocalJsonRepository(Repository):
 class FirestoreRepository(Repository):
     def __init__(self) -> None:
         settings = get_settings()
-        if not settings.google_service_account_json:
+        if not settings.has_google_service_account_credentials():
             raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is required for Firestore mode.")
         if not firebase_admin._apps:
             cred = credentials.Certificate(
@@ -685,7 +685,7 @@ class LocalFileStorageProvider(FileStorageProvider):
 class GoogleDriveStorageProvider(FileStorageProvider):
     def __init__(self) -> None:
         settings = get_settings()
-        if not settings.google_service_account_json or not settings.google_drive_parent_folder_id:
+        if not settings.has_google_service_account_credentials() or not settings.google_drive_parent_folder_id:
             raise RuntimeError("Google Drive storage requires service account JSON and parent folder id.")
         service_account_info = settings.google_service_account_info()
         scoped = (
@@ -741,7 +741,7 @@ class GoogleDriveStorageProvider(FileStorageProvider):
 class FirebaseStorageProvider(FileStorageProvider):
     def __init__(self) -> None:
         settings = get_settings()
-        if not settings.google_service_account_json:
+        if not settings.has_google_service_account_credentials():
             raise RuntimeError("Firebase Storage requires service account JSON.")
         bucket_name = settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
         service_account_info = settings.google_service_account_info()
