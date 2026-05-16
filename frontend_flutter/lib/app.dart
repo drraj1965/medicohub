@@ -1766,11 +1766,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       child: compact
           ? Row(
               children: [
-                Image.asset(
-                  assetPath,
-                  height: 72,
-                  width: 72,
-                  fit: BoxFit.contain,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.asset(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? _brandIconDarkAsset
+                        : _brandIconLightAsset,
+                    height: 72,
+                    width: 72,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
