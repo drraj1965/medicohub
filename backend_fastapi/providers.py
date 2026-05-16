@@ -388,7 +388,10 @@ class FirestoreRepository(Repository):
         if not settings.google_service_account_json:
             raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is required for Firestore mode.")
         if not firebase_admin._apps:
-            cred = credentials.Certificate(settings.google_service_account_json)
+            cred = credentials.Certificate(
+                settings.google_service_account_info()
+                or settings.google_service_account_json
+            )
             firebase_admin.initialize_app(cred, {"projectId": settings.firebase_project_id or None})
         self._db = firestore.client()
 
@@ -684,9 +687,17 @@ class GoogleDriveStorageProvider(FileStorageProvider):
         settings = get_settings()
         if not settings.google_service_account_json or not settings.google_drive_parent_folder_id:
             raise RuntimeError("Google Drive storage requires service account JSON and parent folder id.")
-        scoped = service_account.Credentials.from_service_account_file(
-            settings.google_service_account_json,
-            scopes=["https://www.googleapis.com/auth/drive"],
+        service_account_info = settings.google_service_account_info()
+        scoped = (
+            service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=["https://www.googleapis.com/auth/drive"],
+            )
+            if service_account_info is not None
+            else service_account.Credentials.from_service_account_file(
+                settings.google_service_account_json,
+                scopes=["https://www.googleapis.com/auth/drive"],
+            )
         )
         self._folder_id = settings.google_drive_parent_folder_id
         self._service = build("drive", "v3", credentials=scoped, cache_discovery=False)
@@ -733,8 +744,13 @@ class FirebaseStorageProvider(FileStorageProvider):
         if not settings.google_service_account_json:
             raise RuntimeError("Firebase Storage requires service account JSON.")
         bucket_name = settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
-        creds = service_account.Credentials.from_service_account_file(
-            settings.google_service_account_json,
+        service_account_info = settings.google_service_account_info()
+        creds = (
+            service_account.Credentials.from_service_account_info(service_account_info)
+            if service_account_info is not None
+            else service_account.Credentials.from_service_account_file(
+                settings.google_service_account_json,
+            )
         )
         self._client = gcs_storage.Client(
             project=settings.firebase_project_id,

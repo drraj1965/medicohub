@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -48,6 +49,11 @@ class Settings:
     twilio_from_phone: str
     twilio_whatsapp_number: str
     otp_code_ttl_minutes: int
+
+    def google_service_account_info(self) -> dict | None:
+        if not self.google_service_account_json.lstrip().startswith("{"):
+            return None
+        return json.loads(self.google_service_account_json)
 
 
 @lru_cache(maxsize=1)
