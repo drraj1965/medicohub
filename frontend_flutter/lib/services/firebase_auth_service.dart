@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -172,68 +171,6 @@ class FirebaseAuthService {
         email: email,
       );
     }
-  }
-
-  Future<String> requestPhoneOtp({
-    required String phoneNumber,
-    required Future<void> Function(UserProfile profile) onAutoVerified,
-  }) async {
-    final completer = Completer<String>();
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: (credential) async {
-        try {
-          final profile = await _signInWithPhoneCredential(credential);
-          await onAutoVerified(profile);
-        } catch (_) {}
-      },
-      verificationFailed: (error) {
-        if (!completer.isCompleted) {
-          completer.completeError(error);
-        }
-      },
-      codeSent: (verificationId, _) {
-        if (!completer.isCompleted) {
-          completer.complete(verificationId);
-        }
-      },
-      codeAutoRetrievalTimeout: (verificationId) {
-        if (!completer.isCompleted) {
-          completer.complete(verificationId);
-        }
-      },
-    );
-    return completer.future;
-  }
-
-  Future<UserProfile> verifyPhoneOtp({
-    required String verificationId,
-    required String smsCode,
-  }) {
-    final credential = PhoneAuthProvider.credential(
-      verificationId: verificationId,
-      smsCode: smsCode,
-    );
-    return _signInWithPhoneCredential(credential);
-  }
-
-  Future<UserProfile> _signInWithPhoneCredential(
-    PhoneAuthCredential credential,
-  ) async {
-    final result = await _auth.signInWithCredential(credential);
-    final user = result.user;
-    if (user == null || user.phoneNumber == null) {
-      throw const FirebaseAuthDiagnosticException(
-        operation: 'signInWithPhoneCredential',
-        summary: 'Firebase returned an empty phone-authenticated user.',
-        details: 'Phone verification completed but no phone-authenticated user was returned.',
-      );
-    }
-    return UserProfile.fromFirebase(
-      id: user.uid,
-      email: user.email ?? '',
-      displayName: user.displayName ?? user.phoneNumber!,
-    );
   }
 
   FirebaseAuthDiagnosticException _wrapException({

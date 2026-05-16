@@ -263,7 +263,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String? _authLookupMessage;
   String? _otpStatusMessage;
   String? _otpRequestedDestination;
-  String? _phoneVerificationId;
   String? _voiceStatus;
   String? _audioAttachmentPath;
   SharedPreferences? _prefs;
@@ -1211,7 +1210,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _otpCodeController.clear();
     _otpStatusMessage = null;
     _otpRequestedDestination = null;
-    _phoneVerificationId = null;
   }
 
   void _switchAuthSurface({
@@ -5021,24 +5019,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     });
     try {
       if (!_isSignInUsingEmail) {
-        final verificationId = await _auth.requestPhoneOtp(
-          phoneNumber: destination,
-          onAutoVerified: (firebaseUser) async {
-            await _completePhoneSignIn(firebaseUser);
-          },
-        );
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _authBusy = false;
-          _otpRequested = true;
-          _otpRequestedDestination = destination;
-          _phoneVerificationId = verificationId;
-          _otpStatusMessage =
-              'OTP sent by Firebase. Enter the SMS code when it arrives.';
-        });
-        return;
+        throw Exception('Mobile OTP sign-in is currently disabled.');
       }
       final result = await _api.requestOtp(
         destination: destination,
@@ -5087,16 +5068,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     });
     try {
       if (!_isSignInUsingEmail) {
-        final verificationId = _phoneVerificationId;
-        if (verificationId == null || verificationId.isEmpty) {
-          throw Exception('No Firebase phone verification session is active.');
-        }
-        final firebaseUser = await _auth.verifyPhoneOtp(
-          verificationId: verificationId,
-          smsCode: _otpCodeController.text.trim(),
-        );
-        await _completePhoneSignIn(firebaseUser);
-        return;
+        throw Exception('Mobile OTP sign-in is currently disabled.');
       }
       final destination = _otpRequestedDestination ?? _formattedSignInDestination;
       final profile = await _api.verifyOtp(
@@ -5127,36 +5099,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = 'Could not verify the OTP. Please try again.';
       });
     }
-  }
-
-  Future<void> _completePhoneSignIn(UserProfile firebaseUser) async {
-    final phone = _otpRequestedDestination ?? _formattedSignInDestination;
-    await _api.waitUntilReady();
-    final profile = await _api.lookupUserByPhone(phone);
-    if (profile == null) {
-      throw Exception(
-        'No existing MedicoHub account matches this mobile number. Register with email first, then add the mobile number to the profile.',
-      );
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _activeUser = profile;
-      _selectedLanguage =
-          profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
-      _emailController.text = profile.email;
-      _phoneController.text = profile.phoneNumber ?? phone;
-      _authBusy = false;
-      _voiceStatus = 'Signed in successfully.';
-      _resetOtpJourney();
-      _phoneVerificationId = null;
-    });
-    await _persistAuthPreferences(
-      email: profile.email,
-      phone: profile.phoneNumber ?? phone,
-    );
-    await _refreshNotifications(profile.id);
   }
 
   Future<UserProfile> _loadOrCreateBackendProfile(UserProfile firebaseUser) async {
