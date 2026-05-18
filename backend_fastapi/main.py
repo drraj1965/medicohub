@@ -194,8 +194,12 @@ def lookup_user(email: str) -> dict | None:
 
 
 @app.get("/users/lookup/by-phone")
-def lookup_user_phone(phone_number: str) -> dict | None:
-    return lookup_user_by_phone(phone_number)
+def lookup_user_phone(
+    phone_number: str | None = None,
+    phone_country_code: str | None = None,
+    phone_national_number: str | None = None,
+) -> dict | None:
+    return lookup_user_by_phone(phone_number, phone_country_code, phone_national_number)
 
 
 @app.get("/users/{user_id}")

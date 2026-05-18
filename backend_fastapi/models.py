@@ -101,6 +101,8 @@ class User(BaseModel):
     password: str = "Passw0rd!"
     display_name: str
     phone_number: str | None = None
+    phone_country_code: str | None = None
+    phone_national_number: str | None = None
     role: Literal["patient", "doctor", "admin"]
     verified: bool = False
     languages: list[str] = Field(default_factory=lambda: ["English"])
@@ -155,6 +157,8 @@ class UserProfileUpsertRequest(BaseModel):
     email: str
     display_name: str
     phone_number: str | None = None
+    phone_country_code: str | None = None
+    phone_national_number: str | None = None
     role: Literal["patient", "doctor", "admin"] = "patient"
     verified: bool = False
     languages: list[str] = Field(default_factory=lambda: ["English"])

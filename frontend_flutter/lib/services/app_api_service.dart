@@ -206,11 +206,22 @@ class AppApiService {
     return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<UserProfile?> lookupUserByPhone(String phoneNumber) async {
+  Future<UserProfile?> lookupUserByPhone({
+    String? phoneNumber,
+    String? phoneCountryCode,
+    String? phoneNationalNumber,
+  }) async {
+    final params = <String, String>{
+      if (phoneNumber != null && phoneNumber.isNotEmpty) 'phone_number': phoneNumber,
+      if (phoneCountryCode != null && phoneCountryCode.isNotEmpty)
+        'phone_country_code': phoneCountryCode,
+      if (phoneNationalNumber != null && phoneNationalNumber.isNotEmpty)
+        'phone_national_number': phoneNationalNumber,
+    };
     final response = await _client.get(
       Uri.parse(
-        '$_baseUrl/users/lookup/by-phone?phone_number=${Uri.encodeQueryComponent(phoneNumber)}',
-      ),
+        '$_baseUrl/users/lookup/by-phone',
+      ).replace(queryParameters: params),
     ).timeout(_requestTimeout);
     if (response.statusCode == 404 ||
         response.body.trim().isEmpty ||
@@ -368,6 +379,8 @@ class AppApiService {
     required String role,
     required List<String> languages,
     String? phoneNumber,
+    String? phoneCountryCode,
+    String? phoneNationalNumber,
     List<String> specialties = const [],
   }) async {
     final response = await _client.post(
@@ -378,6 +391,8 @@ class AppApiService {
         'email': email,
         'display_name': displayName,
         'phone_number': phoneNumber,
+        'phone_country_code': phoneCountryCode,
+        'phone_national_number': phoneNationalNumber,
         'role': role,
         'languages': languages,
         'specialties': specialties,

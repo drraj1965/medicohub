@@ -7,6 +7,8 @@ class UserProfile {
     required this.verified,
     required this.languages,
     this.phoneNumber,
+    this.phoneCountryCode,
+    this.phoneNationalNumber,
     this.specialties = const [],
     this.doctorStatus = 'not_applicable',
     this.canManageDoctors = false,
@@ -20,6 +22,8 @@ class UserProfile {
   final bool verified;
   final List<String> languages;
   final String? phoneNumber;
+  final String? phoneCountryCode;
+  final String? phoneNationalNumber;
   final List<String> specialties;
   final String doctorStatus;
   final bool canManageDoctors;
@@ -37,6 +41,8 @@ class UserProfile {
       role: json['role'] as String? ?? 'patient',
       verified: json['verified'] as bool? ?? false,
       phoneNumber: json['phone_number'] as String?,
+      phoneCountryCode: json['phone_country_code'] as String?,
+      phoneNationalNumber: json['phone_national_number'] as String?,
       languages: (json['languages'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
@@ -74,6 +80,8 @@ class DoctorDirectoryEntry {
     required this.languages,
     required this.specialties,
     this.phoneNumber,
+    this.phoneCountryCode,
+    this.phoneNationalNumber,
   });
 
   final String id;
@@ -83,6 +91,8 @@ class DoctorDirectoryEntry {
   final List<String> languages;
   final List<String> specialties;
   final String? phoneNumber;
+  final String? phoneCountryCode;
+  final String? phoneNationalNumber;
 
   factory DoctorDirectoryEntry.fromJson(Map<String, dynamic> json) {
     return DoctorDirectoryEntry(
@@ -91,6 +101,8 @@ class DoctorDirectoryEntry {
       email: json['email'] as String? ?? '',
       role: json['role'] as String? ?? 'doctor',
       phoneNumber: json['phone_number'] as String?,
+      phoneCountryCode: json['phone_country_code'] as String?,
+      phoneNationalNumber: json['phone_national_number'] as String?,
       languages: (json['languages'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),

@@ -70,16 +70,6 @@ const Map<String, String> _signInChannelOptions = <String, String>{
   'Qatar (+974)': '+974',
   'Oman (+968)': '+968',
 };
-const Map<String, String> _defaultDialCodeByCountry = <String, String>{
-  'AE': 'United Arab Emirates (+971)',
-  'US': 'United States (+1)',
-  'IN': 'India (+91)',
-  'GB': 'United Kingdom (+44)',
-  'SA': 'Saudi Arabia (+966)',
-  'QA': 'Qatar (+974)',
-  'OM': 'Oman (+968)',
-};
-
 enum _QuestionFeedScope { mine, public }
 
 enum _QuestionDateFilter {
@@ -212,7 +202,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _audioPreviewPlaying = false;
   bool _adminBusy = false;
   bool _createAccountMode = false;
-  bool _identityLookupBusy = false;
+  final bool _identityLookupBusy = false;
   bool _passwordVisible = false;
   bool _signInPasswordVisible = false;
   bool _currentPasswordVisible = false;
@@ -231,6 +221,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String _selectedAccountRole = 'patient';
   String _selectedSpecialty = 'General Health';
   String _selectedSignInChannel = 'Email';
+  String? _selectedSignupPhoneChannel;
   String _selectedTemplateId = '_custom';
   String _selectedQuestionCategory = 'General';
   String? _questionFilterTopic;
@@ -275,7 +266,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _useTestAds = false;
   String _bannerAdStatus = 'Not initialized yet.';
   String _appOpenAdStatus = 'Not initialized yet.';
-  Timer? _emailLookupDebounce;
   Timer? _backendRetryTimer;
   Timer? _bannerRetryTimer;
   Timer? _appOpenRetryTimer;
@@ -286,7 +276,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     WidgetsBinding.instance.addObserver(this);
     _selectedSignInChannel = _defaultSignInChannelForLocale();
     _syncSignInIdentifierWithSelection();
-    _emailController.addListener(_scheduleIdentityLookup);
     _bootstrap();
   }
 
@@ -323,7 +312,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _adCategoriesController.dispose();
     _adPriorityController.dispose();
     _authScrollController.dispose();
-    _emailLookupDebounce?.cancel();
     _backendRetryTimer?.cancel();
     _bannerRetryTimer?.cancel();
     _appOpenRetryTimer?.cancel();
@@ -432,29 +420,52 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     try {
       _backendRetryTimer?.cancel();
       final results = await Future.wait([
-        _api.fetchQuestions(),
-        _api.fetchEducation(),
-        _api.fetchBlogArticles(),
-        _api.fetchTitleTemplates(),
-        _api.fetchDoctors(),
-        _api.fetchNotificationSettings(),
-        _api.fetchAdCampaigns(),
-        _api.fetchAppSettings(),
+        _tryLoad(_api.fetchQuestions()),
+        _tryLoad(_api.fetchEducation()),
+        _tryLoad(_api.fetchBlogArticles()),
+        _tryLoad(_api.fetchTitleTemplates()),
+        _tryLoad(_api.fetchDoctors()),
+        _tryLoad(_api.fetchNotificationSettings()),
+        _tryLoad(_api.fetchAdCampaigns()),
+        _tryLoad(_api.fetchAppSettings()),
       ]);
       if (!mounted) {
         return;
       }
-      final doctors = results[4] as List<DoctorDirectoryEntry>;
+      final questions = results[0] as List<ForumQuestion>?;
+      final education = results[1] as List<EducationItem>?;
+      final blogArticles = results[2] as List<BlogArticle>?;
+      final titleTemplates = results[3] as List<TitleTemplate>?;
+      final doctors = results[4] as List<DoctorDirectoryEntry>?;
+      final notificationSettings = results[5] as NotificationSettings?;
+      final adCampaigns = results[6] as List<AdCampaign>?;
+      final appSettings = results[7] as AppSettings?;
       setState(() {
-        _questions = results[0] as List<ForumQuestion>;
-        _education = results[1] as List<EducationItem>;
-        _blogArticles = results[2] as List<BlogArticle>;
-        _titleTemplates = results[3] as List<TitleTemplate>;
-        _doctors = doctors;
-        _selectedDoctorId = doctors.isEmpty ? null : doctors.first.id;
-        _notificationSettings = results[5] as NotificationSettings;
-        _adCampaigns = results[6] as List<AdCampaign>;
-        _appSettings = results[7] as AppSettings;
+        if (questions != null) {
+          _questions = questions;
+        }
+        if (education != null) {
+          _education = education;
+        }
+        if (blogArticles != null) {
+          _blogArticles = blogArticles;
+        }
+        if (titleTemplates != null) {
+          _titleTemplates = titleTemplates;
+        }
+        if (doctors != null) {
+          _doctors = doctors;
+          _selectedDoctorId = doctors.isEmpty ? null : doctors.first.id;
+        }
+        if (notificationSettings != null) {
+          _notificationSettings = notificationSettings;
+        }
+        if (adCampaigns != null) {
+          _adCampaigns = adCampaigns;
+        }
+        if (appSettings != null) {
+          _appSettings = appSettings;
+        }
         _selectedQuestionCategory = _availableQuestionTopics.contains(
               _selectedQuestionCategory,
             )
@@ -516,6 +527,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _useTestAdsPreferenceKey = 'ads_use_test_units';
   static const String _lastEmailPreferenceKey = 'auth_last_email';
   static const String _lastPhonePreferenceKey = 'auth_last_phone';
+  static const String _lastPhoneCountryCodePreferenceKey = 'auth_last_phone_country_code';
+  static const String _lastPhoneNationalNumberPreferenceKey = 'auth_last_phone_national_number';
 
   void _loadThemePreferences(SharedPreferences prefs) {
     final presetName = prefs.getString(_themePresetKey);
@@ -547,13 +560,19 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   void _loadAuthPreferences(SharedPreferences prefs) {
     _emailController.text = prefs.getString(_lastEmailPreferenceKey) ?? '';
-    _phoneController.text = prefs.getString(_lastPhonePreferenceKey) ?? '';
+    final savedCountryCode = prefs.getString(_lastPhoneCountryCodePreferenceKey);
+    final savedNationalNumber = prefs.getString(_lastPhoneNationalNumberPreferenceKey);
+    _selectedSignupPhoneChannel = _labelForDialCode(savedCountryCode);
+    _phoneController.text = savedNationalNumber ??
+        _phoneDigitsWithoutCountryCode(prefs.getString(_lastPhonePreferenceKey) ?? '');
     _syncSignInIdentifierWithSelection();
   }
 
   Future<void> _persistAuthPreferences({
     String? email,
     String? phone,
+    String? phoneCountryCode,
+    String? phoneNationalNumber,
   }) async {
     final prefs = _prefs;
     if (prefs == null) {
@@ -564,6 +583,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
     if (phone != null && phone.trim().isNotEmpty) {
       await prefs.setString(_lastPhonePreferenceKey, phone.trim());
+    }
+    if (phoneCountryCode != null && phoneCountryCode.trim().isNotEmpty) {
+      await prefs.setString(_lastPhoneCountryCodePreferenceKey, phoneCountryCode.trim());
+    }
+    if (phoneNationalNumber != null && phoneNationalNumber.trim().isNotEmpty) {
+      await prefs.setString(
+        _lastPhoneNationalNumberPreferenceKey,
+        phoneNationalNumber.trim(),
+      );
     }
   }
 
@@ -1130,7 +1158,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool get _isSignInUsingEmail => _selectedSignInChannel == 'Email';
 
   String get _selectedDialCode =>
-      _isSignInUsingEmail ? '' : (_signInChannelOptions[_selectedSignInChannel] ?? '+971');
+      _isSignInUsingEmail ? '' : (_signInChannelOptions[_selectedSignInChannel] ?? '');
+
+  String? get _selectedSignupDialCode =>
+      _selectedSignupPhoneChannel == null
+          ? null
+          : _signInChannelOptions[_selectedSignupPhoneChannel!];
 
   String get _formattedSignInDestination {
     final raw = _signInIdentifierController.text.trim();
@@ -1141,9 +1174,19 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   String _defaultSignInChannelForLocale() {
-    final locale = WidgetsBinding.instance.platformDispatcher.locale;
-    return _defaultDialCodeByCountry[locale.countryCode?.toUpperCase()] ??
-        'United Arab Emirates (+971)';
+    return 'Email';
+  }
+
+  String? _labelForDialCode(String? dialCode) {
+    if (dialCode == null || dialCode.isEmpty) {
+      return null;
+    }
+    for (final entry in _signInChannelOptions.entries) {
+      if (entry.value == dialCode) {
+        return entry.key;
+      }
+    }
+    return null;
   }
 
   String _phoneDigitsWithoutCountryCode(String value) {
@@ -1172,6 +1215,23 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return digits.isEmpty ? '' : '$_selectedDialCode$digits';
   }
 
+  String? _composePhoneNumber(String? countryCode, String nationalNumber) {
+    final code = (countryCode ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    final national = _phoneDigitsWithoutCountryCode(nationalNumber);
+    if (code.isEmpty || national.isEmpty) {
+      return null;
+    }
+    return '+$code$national';
+  }
+
+  void _hydratePhoneFields(UserProfile profile) {
+    final countryCode = profile.phoneCountryCode;
+    final nationalNumber = profile.phoneNationalNumber ??
+        _phoneDigitsWithoutCountryCode(profile.phoneNumber ?? '');
+    _selectedSignupPhoneChannel = _labelForDialCode(countryCode);
+    _phoneController.text = nationalNumber;
+  }
+
   void _syncSignInIdentifierWithSelection() {
     _signInIdentifierController.text = _isSignInUsingEmail
         ? _emailController.text.trim()
@@ -1194,15 +1254,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   void _handleSignInIdentifierFocusChange() {
-    if (!_signInIdentifierFocusNode.hasFocus) {
-      unawaited(_lookupIdentityForCurrentIdentifier());
-    }
+    // Phone/email account checks now happen only after Continue is pressed.
   }
 
   void _handleSignupEmailFocusChange() {
-    if (!_signupEmailFocusNode.hasFocus) {
-      unawaited(_lookupIdentityForCurrentEmail());
-    }
+    // Signup validation now happens only after Continue is pressed.
   }
 
   void _resetOtpJourney() {
@@ -1901,9 +1957,26 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: 'Mobile number',
+                labelText: 'Mobile number without country code',
                 prefixIcon: Icon(Icons.call_outlined),
               ),
+            ),
+            SizedBox(height: spacing),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedSignupPhoneChannel,
+              decoration: const InputDecoration(labelText: 'Country/region code'),
+              items: _signInChannelOptions.keys
+                  .where((label) => label != 'Email')
+                  .map(
+                    (label) => DropdownMenuItem<String>(
+                      value: label,
+                      child: Text(label, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _selectedSignupPhoneChannel = value);
+              },
             ),
             SizedBox(height: spacing),
             DropdownButtonFormField<String>(
@@ -1965,12 +2038,29 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     keyboardType: TextInputType.phone,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
-                      labelText: 'Mobile number',
+                      labelText: 'Mobile number without country code',
                       prefixIcon: Icon(Icons.call_outlined),
                     ),
                   ),
                 ),
               ],
+            ),
+            SizedBox(height: spacing),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedSignupPhoneChannel,
+              decoration: const InputDecoration(labelText: 'Country/region code'),
+              items: _signInChannelOptions.keys
+                  .where((label) => label != 'Email')
+                  .map(
+                    (label) => DropdownMenuItem<String>(
+                      value: label,
+                      child: Text(label, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _selectedSignupPhoneChannel = value);
+              },
             ),
             SizedBox(height: spacing),
             Row(
@@ -2059,7 +2149,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 final useEmail = selection.first;
                 setState(() {
                   _selectedSignInChannel =
-                      useEmail ? 'Email' : _defaultSignInChannelForLocale();
+                      useEmail ? 'Email' : (_selectedSignupPhoneChannel ?? '');
                   _errorMessage = null;
                   _resetOtpJourney();
                   _syncSignInIdentifierWithSelection();
@@ -2070,8 +2160,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           SizedBox(height: spacing),
           if (!_isSignInUsingEmail) ...[
             DropdownButtonFormField<String>(
-              initialValue: _selectedSignInChannel == 'Email'
-                  ? _defaultSignInChannelForLocale()
+              initialValue: _selectedSignInChannel.isEmpty
+                  ? null
                   : _selectedSignInChannel,
               decoration: const InputDecoration(labelText: 'Country/region code'),
               items: _signInChannelOptions.keys
@@ -4717,7 +4807,18 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Future<void> _signInWithFirebase() async {
     var email = _formattedSignInDestination;
     if (!_isSignInUsingEmail) {
-      final profile = await _api.lookupUserByPhone(email);
+      if (_selectedDialCode.isEmpty || _signInIdentifierController.text.trim().isEmpty) {
+        setState(() {
+          _errorMessage = 'Choose a country code and enter your mobile number to continue.';
+        });
+        return;
+      }
+      final profile = await _api.lookupUserByPhone(
+        phoneCountryCode: _selectedDialCode,
+        phoneNationalNumber: _phoneDigitsWithoutCountryCode(
+          _signInIdentifierController.text.trim(),
+        ),
+      );
       if (profile == null || profile.email.isEmpty) {
         setState(() {
           _errorMessage =
@@ -4753,12 +4854,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
         _authBusy = false;
         _emailController.text = email;
-        _phoneController.text = profile.phoneNumber ?? _phoneController.text;
+        _hydratePhoneFields(profile);
         _resetOtpJourney();
       });
       await _persistAuthPreferences(
         email: email,
         phone: profile.phoneNumber,
+        phoneCountryCode: profile.phoneCountryCode,
+        phoneNationalNumber: profile.phoneNationalNumber,
       );
       await _refreshNotifications(profile.id);
     } catch (error) {
@@ -4779,6 +4882,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     });
     try {
       await _api.waitUntilReady();
+      if (_phoneController.text.trim().isNotEmpty &&
+          _selectedSignupDialCode == null) {
+        throw Exception('Choose a country code for the mobile number.');
+      }
       _prevalidateRegistration();
       final firebaseUser = await _auth.registerWithEmail(
         email: _emailController.text.trim(),
@@ -4791,9 +4898,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         id: firebaseUser.id,
         email: firebaseUser.email,
         displayName: firebaseUser.displayName,
-        phoneNumber: _phoneController.text.trim().isEmpty
+        phoneNumber: _composePhoneNumber(
+          _selectedSignupDialCode,
+          _phoneController.text.trim(),
+        ),
+        phoneCountryCode: _selectedSignupDialCode,
+        phoneNationalNumber: _phoneController.text.trim().isEmpty
             ? null
-            : _phoneController.text.trim(),
+            : _phoneDigitsWithoutCountryCode(_phoneController.text.trim()),
         role: _selectedAccountRole,
         languages: [_selectedLanguage],
         specialties:
@@ -4811,6 +4923,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       await _persistAuthPreferences(
         email: profile.email,
         phone: profile.phoneNumber,
+        phoneCountryCode: profile.phoneCountryCode,
+        phoneNationalNumber: profile.phoneNationalNumber,
       );
       await _refreshNotifications(profile.id);
     } catch (error) {
@@ -4827,7 +4941,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   void _prevalidateRegistration() {
     final email = _normalizeEmail(_emailController.text);
-    final phone = _normalizePhone(_phoneController.text);
+    final phone = _normalizePhone(
+      _composePhoneNumber(_selectedSignupDialCode, _phoneController.text),
+    );
     if (_selectedAccountRole == 'patient') {
       return;
     }
@@ -4867,110 +4983,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
-  void _scheduleIdentityLookup() {
-    _emailLookupDebounce?.cancel();
-    _emailLookupDebounce = Timer(
-      const Duration(milliseconds: 350),
-      _lookupIdentityForCurrentEmail,
-    );
-  }
-
-  Future<void> _lookupIdentityForCurrentEmail() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _matchedRosterUser = null;
-        _identityLookupBusy = false;
-        _authLookupMessage = null;
-      });
-      return;
-    }
-
-    setState(() {
-      _identityLookupBusy = true;
-    });
-
+  Future<T?> _tryLoad<T>(Future<T> request) async {
     try {
-      final matched = await _api.lookupUserByEmail(email);
-      if (!mounted || _emailController.text.trim() != email) {
-        return;
-      }
-      if (matched == null) {
-        setState(() {
-          _matchedRosterUser = null;
-          _identityLookupBusy = false;
-          _createAccountMode = true;
-          _selectedAccountRole = 'patient';
-          _authLookupMessage =
-              'No existing MedicoHub roster match found for this email. Create Account is recommended.';
-        });
-        return;
-      }
-
-      setState(() {
-        _matchedRosterUser = matched;
-        _displayNameController.text = matched.displayName;
-        _phoneController.text = matched.phoneNumber ?? '';
-        _selectedAccountRole = matched.role;
-        if (matched.languages.isNotEmpty) {
-          _selectedLanguage = matched.languages.first;
-        }
-        if (matched.specialties.isNotEmpty) {
-          _selectedSpecialty = matched.specialties.first;
-        }
-        _identityLookupBusy = false;
-        _createAccountMode = false;
-        _authLookupMessage =
-            'Existing ${matched.role} found: ${matched.displayName}. Use Sign In to continue.';
-      });
-    } catch (error) {
-      if (!mounted || _emailController.text.trim() != email) {
-        return;
-      }
-      setState(() {
-        _identityLookupBusy = false;
-        _authLookupMessage = 'Could not verify this email yet: $error';
-      });
-    }
-  }
-
-  Future<void> _lookupIdentityForCurrentIdentifier() async {
-    if (_createAccountMode) {
-      return;
-    }
-    if (_isSignInUsingEmail) {
-      _emailController.text = _signInIdentifierController.text.trim();
-      await _lookupIdentityForCurrentEmail();
-      return;
-    }
-    final phone = _formattedSignInDestination;
-    if (phone.isEmpty) {
-      return;
-    }
-    setState(() => _identityLookupBusy = true);
-    try {
-      final matched = await _api.lookupUserByPhone(phone);
-      if (!mounted || _formattedSignInDestination != phone) {
-        return;
-      }
-      setState(() {
-        _matchedRosterUser = matched;
-        _identityLookupBusy = false;
-        _authLookupMessage = matched == null
-            ? 'No existing account found for this mobile number.'
-            : 'Existing ${matched.role} found: ${matched.displayName}. Use Sign In to continue.';
-      });
+      return await request;
     } catch (_) {
-      if (!mounted || _formattedSignInDestination != phone) {
-        return;
-      }
-      setState(() {
-        _identityLookupBusy = false;
-        _authLookupMessage = null;
-      });
+      return null;
     }
   }
 
@@ -5084,7 +5101,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _selectedLanguage =
             profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
         _emailController.text = profile.email;
-        _phoneController.text = profile.phoneNumber ?? _phoneController.text;
+        _hydratePhoneFields(profile);
         _authBusy = false;
         _voiceStatus = 'Signed in successfully.';
         _resetOtpJourney();
@@ -5122,6 +5139,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       email: firebaseUser.email,
       displayName: rosterMatch.displayName,
       phoneNumber: rosterMatch.phoneNumber,
+      phoneCountryCode: rosterMatch.phoneCountryCode,
+      phoneNationalNumber: rosterMatch.phoneNationalNumber,
       role: rosterMatch.role,
       languages: rosterMatch.languages.isEmpty
           ? [_selectedLanguage]
@@ -5146,7 +5165,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       setState(() {
         _matchedRosterUser = freshLookup;
         _displayNameController.text = freshLookup.displayName;
-        _phoneController.text = freshLookup.phoneNumber ?? '';
+        _hydratePhoneFields(freshLookup);
         _selectedAccountRole = freshLookup.role;
         if (freshLookup.languages.isNotEmpty) {
           _selectedLanguage = freshLookup.languages.first;

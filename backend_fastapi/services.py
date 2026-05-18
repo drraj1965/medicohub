@@ -171,6 +171,18 @@ def _normalize_phone(value: str | None) -> str:
     return "".join(char for char in (value or "") if char.isdigit() or char == "+")
 
 
+def _normalize_phone_part(value: str | None) -> str:
+    return "".join(char for char in (value or "") if char.isdigit())
+
+
+def _compose_phone_number(country_code: str | None, national_number: str | None) -> str | None:
+    code = _normalize_phone_part(country_code)
+    national = _normalize_phone_part(national_number)
+    if not code or not national:
+        return None
+    return f"+{code}{national}"
+
+
 def _generate_otp_code() -> str:
     return f"{random.randint(0, 999999):06d}"
 
@@ -305,11 +317,42 @@ def _send_whatsapp_message(destination: str, body: str) -> bool:
     return True
 
 
-def _find_user_by_email_or_phone(email: str | None, phone_number: str | None) -> dict | None:
+def _phone_parts_match(
+    user: dict,
+    *,
+    country_code: str | None,
+    national_number: str | None,
+) -> bool:
+    expected_code = _normalize_phone_part(country_code)
+    expected_national = _normalize_phone_part(national_number)
+    if not expected_code or not expected_national:
+        return False
+    stored_code = _normalize_phone_part(user.get("phone_country_code"))
+    stored_national = _normalize_phone_part(user.get("phone_national_number"))
+    if stored_code and stored_national:
+        return stored_code == expected_code and stored_national == expected_national
+    # Legacy users may only have the old combined E.164-style field. Compare the
+    # exact recomposed number while they are gradually upgraded on next profile save.
+    return _normalize_phone(user.get("phone_number")) == f"+{expected_code}{expected_national}"
+
+
+def _find_user_by_email_or_phone(
+    email: str | None,
+    phone_number: str | None,
+    *,
+    phone_country_code: str | None = None,
+    phone_national_number: str | None = None,
+) -> dict | None:
     normalized_email = _normalize_email(email)
     normalized_phone = _normalize_phone(phone_number)
     for user in repository.list_users():
         if normalized_email and _normalize_email(user.get("email")) == normalized_email:
+            return user
+        if _phone_parts_match(
+            user,
+            country_code=phone_country_code,
+            national_number=phone_national_number,
+        ):
             return user
         if normalized_phone and _normalize_phone(user.get("phone_number")) == normalized_phone:
             return user
@@ -883,8 +926,17 @@ def lookup_user_by_email(email: str) -> dict | None:
     return _serialize_user(user)
 
 
-def lookup_user_by_phone(phone_number: str) -> dict | None:
-    user = _find_user_by_email_or_phone(None, phone_number)
+def lookup_user_by_phone(
+    phone_number: str | None = None,
+    phone_country_code: str | None = None,
+    phone_national_number: str | None = None,
+) -> dict | None:
+    user = _find_user_by_email_or_phone(
+        None,
+        phone_number,
+        phone_country_code=phone_country_code,
+        phone_national_number=phone_national_number,
+    )
     if user is None:
         return None
     return _serialize_user(user)
@@ -908,7 +960,16 @@ def get_user_profile(user_id: str) -> dict:
 
 def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
     existing = repository.get_user(payload.id)
-    existing_by_identity = _find_user_by_email_or_phone(payload.email, payload.phone_number)
+    phone_number = (
+        _compose_phone_number(payload.phone_country_code, payload.phone_national_number)
+        or payload.phone_number
+    )
+    existing_by_identity = _find_user_by_email_or_phone(
+        payload.email,
+        phone_number,
+        phone_country_code=payload.phone_country_code,
+        phone_national_number=payload.phone_national_number,
+    )
     existing_consent = existing.get("consent") if existing else None
     existing_created_at = existing.get("created_at") if existing else utc_now()
     existing_password = existing.get("password", "Passw0rd!") if existing else "Passw0rd!"
@@ -920,7 +981,8 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
     doctor_status = "not_applicable"
     invited_by = existing.get("invited_by") if existing else None
     display_name = payload.display_name.strip()
-    phone_number = payload.phone_number
+    phone_country_code = payload.phone_country_code
+    phone_national_number = payload.phone_national_number
     specialties = payload.specialties or []
 
     if role == "admin":
@@ -944,6 +1006,8 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         doctor_status = "active"
         display_name = allowlisted["display_name"]
         phone_number = allowlisted["phone_number"]
+        phone_country_code = allowlisted.get("phone_country_code")
+        phone_national_number = allowlisted.get("phone_national_number")
         specialties = allowlisted["specialties"]
         languages = allowlisted["languages"]
     elif role == "doctor":
@@ -961,6 +1025,8 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         invited_by = invited_record.get("invited_by")
         display_name = invited_record.get("display_name", display_name)
         phone_number = invited_record.get("phone_number", phone_number)
+        phone_country_code = invited_record.get("phone_country_code", phone_country_code)
+        phone_national_number = invited_record.get("phone_national_number", phone_national_number)
         specialties = invited_record.get("specialties", specialties)
         languages = invited_record.get("languages", payload.languages or ["English"])
     else:
@@ -975,6 +1041,8 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         "password": existing_password if existing else "Passw0rd!",
         "display_name": display_name,
         "phone_number": phone_number,
+        "phone_country_code": phone_country_code,
+        "phone_national_number": phone_national_number,
         "role": role,
         "verified": verified,
         "languages": languages,
