@@ -62,8 +62,10 @@ android {
 
     packaging {
         jniLibs {
-            // Avoid Windows/SDK strip-tool failures during Play bundle generation.
-            keepDebugSymbols += setOf("**/*.so")
+            // Keep native symbols only when explicitly requested for diagnostics.
+            if (project.findProperty("keepNativeDebugSymbols") == "true") {
+                keepDebugSymbols += setOf("**/*.so")
+            }
         }
     }
 }
