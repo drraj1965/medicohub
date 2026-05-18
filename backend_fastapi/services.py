@@ -939,6 +939,23 @@ def lookup_user_by_phone(
     )
     if user is None:
         return None
+    if (
+        phone_country_code
+        and phone_national_number
+        and not user.get("phone_country_code")
+        and not user.get("phone_national_number")
+        and _phone_parts_match(
+            user,
+            country_code=phone_country_code,
+            national_number=phone_national_number,
+        )
+    ):
+        user = {
+            **user,
+            "phone_country_code": phone_country_code,
+            "phone_national_number": phone_national_number,
+        }
+        repository.upsert_user(user)
     return _serialize_user(user)
 
 
