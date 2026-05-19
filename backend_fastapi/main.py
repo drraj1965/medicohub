@@ -20,6 +20,7 @@ try:
         PaymentIntentRequest,
         QuestionCreate,
         QuestionDeleteRequest,
+        ResponseDeleteRequest,
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
@@ -35,6 +36,7 @@ try:
         create_blog_article,
         create_attachment,
         delete_question,
+        delete_responses,
         delete_user_account,
         invite_doctor,
         create_payment_intent,
@@ -85,6 +87,7 @@ except ImportError:
         PaymentIntentRequest,
         QuestionCreate,
         QuestionDeleteRequest,
+        ResponseDeleteRequest,
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
@@ -100,6 +103,7 @@ except ImportError:
         create_blog_article,
         create_attachment,
         delete_question,
+        delete_responses,
         delete_user_account,
         invite_doctor,
         create_payment_intent,
@@ -268,6 +272,11 @@ def resolve_report_source(pmc_id: str, article_url: str | None = None) -> dict:
 @app.post("/doctor/respond")
 def doctor_respond(payload: DoctorResponseInput) -> dict:
     return add_response(payload)
+
+
+@app.delete("/questions/{question_id}/responses")
+def remove_responses(question_id: str, payload: ResponseDeleteRequest) -> dict:
+    return delete_responses(question_id, payload)
 
 
 @app.post("/questions/{question_id}/messages")

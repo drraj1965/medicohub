@@ -60,6 +60,9 @@ class Repository(ABC):
     def add_response(self, question_id: str, response: dict[str, Any]) -> dict[str, Any] | None: ...
 
     @abstractmethod
+    def delete_responses(self, question_id: str, response_ids: list[str]) -> list[dict[str, Any]] | None: ...
+
+    @abstractmethod
     def add_thread_message(self, question_id: str, message: dict[str, Any], *, reopen: bool) -> dict[str, Any] | None: ...
 
     @abstractmethod
@@ -243,6 +246,25 @@ class LocalJsonRepository(Repository):
                 question["updated_at"] = response["created_at"]
                 save_db(db)
                 return response
+        return None
+
+    def delete_responses(self, question_id: str, response_ids: list[str]) -> list[dict[str, Any]] | None:
+        db = self._db()
+        wanted = set(response_ids)
+        for question in db["questions"]:
+            if question["id"] != question_id:
+                continue
+            responses = question.get("responses", [])
+            removed = [item for item in responses if item.get("id") in wanted]
+            if not removed:
+                return []
+            question["responses"] = [item for item in responses if item.get("id") not in wanted]
+            question["response_count"] = len(question["responses"])
+            if not question["responses"] and question.get("status") == "answered":
+                question["status"] = "open"
+            question["updated_at"] = utc_now().isoformat()
+            save_db(db)
+            return removed
         return None
 
     def add_thread_message(self, question_id: str, message: dict[str, Any], *, reopen: bool) -> dict[str, Any] | None:
@@ -516,6 +538,25 @@ class FirestoreRepository(Repository):
         question["updated_at"] = response["created_at"]
         ref.set(question)
         return response
+
+    def delete_responses(self, question_id: str, response_ids: list[str]) -> list[dict[str, Any]] | None:
+        ref = self._collection("questions").document(question_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        question = self._decode(snap.to_dict())
+        wanted = set(response_ids)
+        responses = question.get("responses", [])
+        removed = [item for item in responses if item.get("id") in wanted]
+        if not removed:
+            return []
+        question["responses"] = [item for item in responses if item.get("id") not in wanted]
+        question["response_count"] = len(question["responses"])
+        if not question["responses"] and question.get("status") == "answered":
+            question["status"] = "open"
+        question["updated_at"] = utc_now().isoformat()
+        ref.set(question)
+        return removed
 
     def add_thread_message(self, question_id: str, message: dict[str, Any], *, reopen: bool) -> dict[str, Any] | None:
         ref = self._collection("questions").document(question_id)

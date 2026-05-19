@@ -525,6 +525,22 @@ class AppApiService {
     );
   }
 
+  Future<void> deleteDoctorResponses({
+    required String questionId,
+    required String actorId,
+    required List<String> responseIds,
+  }) async {
+    final response = await _client.delete(
+      Uri.parse('$_baseUrl/questions/$questionId/responses'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'response_ids': responseIds,
+      }),
+    );
+    _ensureSuccess(response, 'delete doctor responses');
+  }
+
   Future<ThreadMessage> addThreadMessage({
     required String questionId,
     required String actorId,

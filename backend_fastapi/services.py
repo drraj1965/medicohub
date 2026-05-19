@@ -36,6 +36,7 @@ try:
         PaymentIntentResponse,
         QuestionCreate,
         QuestionDeleteRequest,
+        ResponseDeleteRequest,
         QuestionRecord,
         ThreadMessageInput,
         ThreadMessageModerationRequest,
@@ -80,6 +81,7 @@ except ImportError:
         PaymentIntentResponse,
         QuestionCreate,
         QuestionDeleteRequest,
+        ResponseDeleteRequest,
         QuestionRecord,
         ThreadMessageInput,
         ThreadMessageModerationRequest,
@@ -1352,6 +1354,30 @@ def add_response(payload: DoctorResponseInput) -> dict:
     return response
 
 
+def delete_responses(question_id: str, payload: ResponseDeleteRequest) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") not in {"doctor", "admin"} and not actor.get("can_moderate_content"):
+        raise HTTPException(status_code=403, detail="Only doctors and admins can delete doctor responses.")
+    if not payload.response_ids:
+        raise HTTPException(status_code=400, detail="Select at least one response to delete.")
+
+    question = next((item for item in repository.list_questions() if item["id"] == question_id), None)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found.")
+
+    removed = repository.delete_responses(question_id, payload.response_ids)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="Question not found.")
+    for response in removed:
+        emit_audit("response", response.get("id", "unknown"), "deleted", payload.actor_id, response)
+    return {
+        "question_id": question_id,
+        "deleted_response_ids": [item.get("id") for item in removed],
+    }
+
+
 def add_thread_message(payload: ThreadMessageInput) -> dict:
     question = next((item for item in repository.list_questions() if item["id"] == payload.question_id), None)
     if question is None:
@@ -1426,17 +1452,8 @@ def moderate_thread_message(
     question = next((item for item in repository.list_questions() if item["id"] == question_id), None)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found.")
-    assigned_doctor = repository.get_user(question.get("target_doctor_id", ""))
-    if actor.get("role") != "admin":
-        direct_assignment = question.get("target_doctor_id") == actor.get("id")
-        email_assignment = _normalize_email(actor.get("email")) == _normalize_email(
-            assigned_doctor.get("email") if assigned_doctor else None
-        )
-        if not (direct_assignment or email_assignment):
-            raise HTTPException(
-                status_code=403,
-                detail="Only the assigned doctor or an admin can moderate this thread.",
-            )
+    if actor.get("role") not in {"doctor", "admin"} and not actor.get("can_moderate_content"):
+        raise HTTPException(status_code=403, detail="Only doctors and admins can moderate this thread.")
 
     moderated = repository.moderate_thread_message(
         question_id,

@@ -240,6 +240,11 @@ class QuestionDeleteRequest(BaseModel):
     actor_id: str
 
 
+class ResponseDeleteRequest(BaseModel):
+    actor_id: str
+    response_ids: list[str]
+
+
 class ThreadMessageInput(BaseModel):
     question_id: str
     actor_id: str

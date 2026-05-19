@@ -219,6 +219,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
   bool _biometricBusy = false;
+  bool _bottomNavigationExpanded = true;
   int _tabIndex = 0;
 
   String _selectedExpiry = '7d';
@@ -1033,6 +1034,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return user?.isAdmin == true || user?.isDoctor == true;
   }
 
+  bool get _canAccessDoctorPublishing {
+    final user = _activeUser;
+    return user?.isAdmin == true || user?.isDoctor == true;
+  }
+
+  int get _maxTabIndex => _canAccessDoctorPublishing ? 5 : 4;
+
   List<ForumQuestion> get _roleScopedQuestions {
     final user = _activeUser;
     if (user == null) {
@@ -1062,7 +1070,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       return const [];
     }
     return _roleScopedQuestions.where((question) {
-      if (!_isAssignedToActiveDoctor(question, user)) {
+      if (!user.isAdmin && !_isAssignedToActiveDoctor(question, user)) {
         return false;
       }
       return question.status == 'open' || _latestThreadMessageNeedsDoctor(question);
@@ -1075,11 +1083,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user == null || !user.isDoctor) {
       return const [];
     }
+    final currentIds = _doctorCurrentQuestions.map((question) => question.id).toSet();
     return _roleScopedQuestions.where((question) {
-      if (!_isAssignedToActiveDoctor(question, user)) {
+      if (!user.isAdmin && !_isAssignedToActiveDoctor(question, user)) {
         return false;
       }
-      return !_doctorCurrentQuestions.any((current) => current.id == question.id);
+      return !currentIds.contains(question.id);
     }).toList()
       ..sort((a, b) => _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
   }
@@ -1348,39 +1357,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               ),
             )
           : null,
-      bottomNavigationBar: signedIn
-          ? NavigationBar(
-              selectedIndex: _tabIndex.clamp(0, 4),
-              onDestinationSelected: (value) => setState(() => _tabIndex = value),
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home_rounded),
-                  label: 'Home',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.add_circle_outline_rounded),
-                  selectedIcon: Icon(Icons.add_comment_rounded),
-                  label: 'Ask',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.forum_outlined),
-                  selectedIcon: Icon(Icons.forum_rounded),
-                  label: 'Questions',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.auto_stories_outlined),
-                  selectedIcon: Icon(Icons.auto_stories_rounded),
-                  label: 'Education',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.tune_outlined),
-                  selectedIcon: Icon(Icons.tune_rounded),
-                  label: 'Settings',
-                ),
-              ],
-            )
-          : null,
+      bottomNavigationBar: signedIn ? _buildBottomNavigationBar(context) : null,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -1392,17 +1369,92 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   : Padding(
                       padding: const EdgeInsets.all(16),
                       child: IndexedStack(
-                        index: _tabIndex.clamp(0, 4),
+                        index: _tabIndex.clamp(0, _maxTabIndex),
                         children: [
                           _buildHomeTab(context),
                           _buildAskTab(context),
                           _buildQuestionsTab(context),
                           _buildEducationTab(context),
                           _buildSettingsTab(context),
+                          if (_canAccessDoctorPublishing)
+                            _buildDoctorPublishingTab(context),
                         ],
                       ),
                     ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar(BuildContext context) {
+    final destinations = <NavigationDestination>[
+      const NavigationDestination(
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home_rounded),
+        label: 'Home',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.add_circle_outline_rounded),
+        selectedIcon: Icon(Icons.add_comment_rounded),
+        label: 'Ask',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.forum_outlined),
+        selectedIcon: Icon(Icons.forum_rounded),
+        label: 'Questions',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.auto_stories_outlined),
+        selectedIcon: Icon(Icons.auto_stories_rounded),
+        label: 'Education',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.tune_outlined),
+        selectedIcon: Icon(Icons.tune_rounded),
+        label: 'Settings',
+      ),
+      if (_canAccessDoctorPublishing)
+        const NavigationDestination(
+          icon: Icon(Icons.edit_document),
+          selectedIcon: Icon(Icons.edit_document),
+          label: 'Publish',
+        ),
+    ];
+    final selectedIndex = _tabIndex.clamp(0, destinations.length - 1);
+    return Material(
+      elevation: 4,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              tooltip: _bottomNavigationExpanded
+                  ? 'Hide navigation bar'
+                  : 'Show navigation bar',
+              icon: Icon(
+                _bottomNavigationExpanded
+                    ? Icons.keyboard_arrow_down_rounded
+                    : Icons.keyboard_arrow_up_rounded,
+              ),
+              onPressed: () => setState(
+                () => _bottomNavigationExpanded = !_bottomNavigationExpanded,
+              ),
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: _bottomNavigationExpanded
+                ? NavigationBar(
+                    key: const ValueKey('expanded-navigation'),
+                    selectedIndex: selectedIndex,
+                    onDestinationSelected: (value) =>
+                        setState(() => _tabIndex = value),
+                    destinations: destinations,
+                  )
+                : const SizedBox.shrink(key: ValueKey('collapsed-navigation')),
+          ),
+        ],
       ),
     );
   }
@@ -1552,6 +1604,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     label: 'Profile & Settings',
                     onTap: () => _selectDrawerTab(context, 4),
                   ),
+                  if (_canAccessDoctorPublishing)
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.edit_document,
+                      label: 'Doctor Publishing',
+                      onTap: () => _selectDrawerTab(context, 5),
+                    ),
                   _buildDrawerItem(
                     context,
                     icon: Icons.info_outline_rounded,
@@ -1735,6 +1794,43 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
                   const SizedBox(height: 16),
                   Text(item.summary),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showBlogArticleSheet(BlogArticle article) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    article.category.toUpperCase(),
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    article.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text('By ${article.authorName} • ${article.language}'),
+                  const SizedBox(height: 16),
+                  Text(article.summary),
+                  const SizedBox(height: 16),
+                  Text(article.body),
                 ],
               ),
             ),
@@ -2699,6 +2795,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 onDelete: _canEditQuestion(question)
                     ? () => _deleteQuestion(question)
                     : null,
+                canDeleteResponses: _canDeleteDoctorResponses(question),
+                onDeleteResponses: (responses) =>
+                    _deleteDoctorResponses(question, responses),
               ),
             ),
             for (final campaign in relatedCampaign)
@@ -2790,6 +2889,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                         _canModerateThreadMessage(question, message),
                     onModerateMessage: (message, state) =>
                         _moderateThreadMessage(question, message, state),
+                    canDeleteResponses: _canDeleteDoctorResponses(question),
+                    onDeleteResponses: (responses) =>
+                        _deleteDoctorResponses(question, responses),
                   ),
                 ),
               ),
@@ -3575,23 +3677,31 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(article.category.toUpperCase(),
-                              style: Theme.of(context).textTheme.labelLarge),
-                          const SizedBox(height: 8),
-                          Text(article.title,
-                              style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 8),
-                          Text('By ${article.authorName} • ${article.language}'),
-                          const SizedBox(height: 12),
-                          Text(article.summary),
-                          const SizedBox(height: 12),
-                          Text(article.body),
-                        ],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _showBlogArticleSheet(article),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(article.category.toUpperCase(),
+                                style: Theme.of(context).textTheme.labelLarge),
+                            const SizedBox(height: 8),
+                            Text(article.title,
+                                style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            Text('By ${article.authorName} • ${article.language}'),
+                            const SizedBox(height: 12),
+                            Text(article.summary),
+                            const SizedBox(height: 12),
+                            Text(
+                              article.body,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -3732,6 +3842,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             _canModerateThreadMessage(question, message),
                         onModerateMessage: (message, state) =>
                             _moderateThreadMessage(question, message, state),
+                        canDeleteResponses: _canDeleteDoctorResponses(question),
+                        onDeleteResponses: (responses) =>
+                            _deleteDoctorResponses(question, responses),
                       ),
                     ),
                     for (final campaign in campaigns)
@@ -4648,79 +4761,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ),
         ],
-        if (user.isDoctor) ...[
+        if (_canAccessDoctorPublishing) ...[
           const SizedBox(height: 16),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Doctor Publishing',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Publish patient-friendly blog posts that appear in the Education tab. Comment threads and moderation actions will be added next.',
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _articleTitleController,
-                    decoration: const InputDecoration(labelText: 'Article title'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _articleSummaryController,
-                    maxLines: 2,
-                    decoration: const InputDecoration(labelText: 'Short summary'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _articleBodyController,
-                    maxLines: 5,
-                    decoration: const InputDecoration(labelText: 'Article body'),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _articleCategory,
-                    decoration: const InputDecoration(labelText: 'Article category'),
-                    items: _specialties
-                        .map(
-                          (specialty) => DropdownMenuItem<String>(
-                            value: specialty,
-                            child: Text(specialty),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _articleCategory = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _adminBusy ? null : _publishDoctorArticle,
-                    child: Text(_adminBusy ? 'Publishing...' : 'Publish Article'),
-                  ),
-                ],
+            child: ListTile(
+              leading: const Icon(Icons.edit_document),
+              title: const Text('Doctor Publishing'),
+              subtitle: const Text(
+                'Write patient-friendly articles from a dedicated doctor/admin workspace.',
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Doctor Sharing & Outreach',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Doctors will be able to invite patients, share the app, publish blog posts, and moderate blog comments from this area in the next module.',
-                  ),
-                ],
-              ),
+              trailing: const Icon(Icons.arrow_forward_rounded),
+              onTap: () => setState(() => _tabIndex = 5),
             ),
           ),
         ],
@@ -5401,10 +5452,154 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     } catch (_) {}
   }
 
+  Widget _buildDoctorPublishingTab(BuildContext context) {
+    final user = _activeUser!;
+    if (!_canAccessDoctorPublishing) {
+      return const Center(
+        child: Text('Doctor publishing is not available for this account.'),
+      );
+    }
+    return ListView(
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.edit_document),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Doctor Publishing',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  user.isAdmin
+                      ? 'Publish or coordinate patient-friendly education posts for the MedicoHub blog.'
+                      : 'Publish patient-friendly education posts that appear in the Education blog page.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _articleTitleController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Article title'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _articleSummaryController,
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Short summary'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _articleBodyController,
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLines: 6,
+                  decoration: const InputDecoration(labelText: 'Article body'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _articleCategory,
+                  decoration:
+                      const InputDecoration(labelText: 'Article category'),
+                  items: _specialties
+                      .map(
+                        (specialty) => DropdownMenuItem<String>(
+                          value: specialty,
+                          child: Text(specialty),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _articleCategory = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _adminBusy ? null : _publishDoctorArticle,
+                  icon: const Icon(Icons.publish_rounded),
+                  label: Text(_adminBusy ? 'Publishing...' : 'Publish Article'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Published Blog Articles',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                if (_blogArticles.isEmpty)
+                  const Text('No doctor articles have been published yet.')
+                else
+                  ..._blogArticles.take(8).map(
+                        (article) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.article_outlined),
+                          title: Text(article.title),
+                          subtitle:
+                              Text('${article.category} • ${article.authorName}'),
+                          onTap: () => _showBlogArticleSheet(article),
+                        ),
+                      ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Doctor Sharing & Outreach',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'This area is reserved for doctor-facing publishing, patient invitations, and future blog comment moderation. It is intentionally hidden from patient accounts.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   bool _canRespondToQuestion(ForumQuestion question) {
     final user = _activeUser;
     if (user == null || !user.isDoctor) {
       return false;
+    }
+    if (user.isAdmin) {
+      if (_isAssignedToActiveDoctor(question, user)) {
+        return true;
+      }
+      final hasWaitedLongEnough = DateTime.now()
+              .difference(_latestConversationMoment(question))
+              .inHours >=
+          24;
+      return _latestThreadMessageNeedsDoctor(question) && hasWaitedLongEnough;
     }
     return _isAssignedToActiveDoctor(question, user);
   }
@@ -5418,7 +5613,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       return question.authorId == user.id;
     }
     if (user.isDoctor) {
-      return _isAssignedToActiveDoctor(question, user);
+      return user.isAdmin || _isAssignedToActiveDoctor(question, user);
     }
     return false;
   }
@@ -5428,10 +5623,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user == null) {
       return false;
     }
-    if (user.isAdmin) {
-      return true;
-    }
-    return user.isDoctor && _isAssignedToActiveDoctor(question, user);
+    return user.isAdmin || user.isDoctor || user.canModerateContent;
+  }
+
+  bool _canDeleteDoctorResponses(ForumQuestion question) {
+    final user = _activeUser;
+    return user?.isAdmin == true || user?.isDoctor == true || user?.canModerateContent == true;
   }
 
   bool _isAssignedToActiveDoctor(ForumQuestion question, UserProfile user) {
@@ -6778,6 +6975,74 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _deleteDoctorResponses(
+    ForumQuestion question,
+    List<DoctorResponse> responses,
+  ) async {
+    final user = _activeUser;
+    if (user == null || responses.isEmpty) {
+      return;
+    }
+    try {
+      await _api.deleteDoctorResponses(
+        questionId: question.id,
+        actorId: user.id,
+        responseIds: responses.map((response) => response.id).toList(),
+      );
+      if (!mounted) {
+        return;
+      }
+      final deletedIds = responses.map((response) => response.id).toSet();
+      setState(() {
+        _questions = _questions.map((item) {
+          if (item.id != question.id) {
+            return item;
+          }
+          final remainingResponses = item.responses
+              .where((response) => !deletedIds.contains(response.id))
+              .toList();
+          return ForumQuestion(
+            id: item.id,
+            title: item.title,
+            body: item.body,
+            type: item.type,
+            headingGroup: item.headingGroup,
+            language: item.language,
+            tags: item.tags,
+            premium: item.premium,
+            status: remainingResponses.isEmpty && item.status == 'answered'
+                ? 'open'
+                : item.status,
+            aiSummary: item.aiSummary,
+            responseCount: remainingResponses.length,
+            authorId: item.authorId,
+            targetDoctorId: item.targetDoctorId,
+            responses: remainingResponses,
+            threadMessages: item.threadMessages,
+            createdAt: item.createdAt,
+            updatedAt: DateTime.now().toIso8601String(),
+            authorName: item.authorName,
+            targetDoctorName: item.targetDoctorName,
+            authorEmail: item.authorEmail,
+            targetDoctorEmail: item.targetDoctorEmail,
+            symptomsSummary: item.symptomsSummary,
+            isPublic: item.isPublic,
+          );
+        }).toList();
+        _voiceStatus = responses.length == 1
+            ? 'Doctor response deleted.'
+            : '${responses.length} doctor responses deleted.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = 'Could not delete doctor response: $error';
+      });
+    }
+  }
+
   String _normalizeEmail(String? value) => (value ?? '').trim().toLowerCase();
 
   String _normalizePhone(String? value) => (value ?? '').trim();
@@ -7457,6 +7722,8 @@ class _QuestionCard extends StatelessWidget {
     this.onAddFollowUp,
     this.canModerateMessage,
     this.onModerateMessage,
+    this.canDeleteResponses = false,
+    this.onDeleteResponses,
   });
 
   final ForumQuestion question;
@@ -7469,9 +7736,16 @@ class _QuestionCard extends StatelessWidget {
   final bool Function(ThreadMessage message)? canModerateMessage;
   final void Function(ThreadMessage message, String moderationState)?
       onModerateMessage;
+  final bool canDeleteResponses;
+  final ValueChanged<List<DoctorResponse>>? onDeleteResponses;
 
   @override
   Widget build(BuildContext context) {
+    final visibleThreadMessages = question.threadMessages
+        .where((message) =>
+            message.moderationState != 'hidden' ||
+            canModerateMessage?.call(message) == true)
+        .toList();
     final hiddenMessageCount = question.threadMessages
         .where((message) => message.moderationState == 'hidden')
         .length;
@@ -7538,11 +7812,11 @@ class _QuestionCard extends StatelessWidget {
               style: TextStyle(color: Theme.of(context).colorScheme.primary),
             ),
           ],
-          if (question.threadMessages.isNotEmpty) ...[
+          if (visibleThreadMessages.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text('Conversation', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            ...question.threadMessages.map((message) => _ThreadMessageTile(
+            ...visibleThreadMessages.map((message) => _ThreadMessageTile(
                   message: message,
                   canModerate: canModerateMessage?.call(message) == true,
                   onModerate: onModerateMessage == null
@@ -7552,9 +7826,33 @@ class _QuestionCard extends StatelessWidget {
           ],
           if (question.responses.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Doctor Responses', style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Doctor Responses',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                if (canDeleteResponses &&
+                    onDeleteResponses != null &&
+                    question.responses.length > 1)
+                  TextButton.icon(
+                    onPressed: () => onDeleteResponses!(question.responses),
+                    icon: const Icon(Icons.delete_sweep_outlined),
+                    label: const Text('Delete all'),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
-            ...question.responses.map((response) => _DoctorResponseTile(response: response)),
+            ...question.responses.map(
+              (response) => _DoctorResponseTile(
+                response: response,
+                onDelete: canDeleteResponses && onDeleteResponses != null
+                    ? () => onDeleteResponses!([response])
+                    : null,
+              ),
+            ),
           ],
           if (actionButtons.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -7693,8 +7991,8 @@ class _ThreadMessageTile extends StatelessWidget {
                           : 'hidden',
                       child: Text(
                         message.moderationState == 'hidden'
-                            ? 'Show message'
-                            : 'Hide message',
+                            ? 'Restore message'
+                            : 'Delete message',
                       ),
                     ),
                   ],
@@ -7728,9 +8026,13 @@ class _ThreadMessageTile extends StatelessWidget {
 }
 
 class _DoctorResponseTile extends StatelessWidget {
-  const _DoctorResponseTile({required this.response});
+  const _DoctorResponseTile({
+    required this.response,
+    this.onDelete,
+  });
 
   final DoctorResponse response;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -7744,9 +8046,21 @@ class _DoctorResponseTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Doctor response • ${response.responseMode}',
-            style: Theme.of(context).textTheme.titleMedium,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Doctor response • ${response.responseMode}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (onDelete != null)
+                IconButton(
+                  tooltip: 'Delete response',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(
