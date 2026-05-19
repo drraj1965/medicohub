@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -146,6 +147,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final FirebaseAuthService _auth = FirebaseAuthService();
   final UpdateService _updateService = UpdateService();
   final MedicoHubVoiceService _voiceService = MedicoHubVoiceService();
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
@@ -214,6 +216,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _deleteAccountBusy = false;
   bool _otpRequested = false;
   bool _signupPolicyAccepted = false;
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
+  bool _biometricBusy = false;
   int _tabIndex = 0;
 
   String _selectedExpiry = '7d';
@@ -369,6 +374,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         unawaited(_handleAutoUpdateIfNeeded(updateInfo));
       }
       unawaited(_initializeMobileAdsIfNeeded());
+      unawaited(_refreshBiometricAvailability());
     } catch (error) {
       if (!mounted) {
         return;
@@ -529,6 +535,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _lastPhonePreferenceKey = 'auth_last_phone';
   static const String _lastPhoneCountryCodePreferenceKey = 'auth_last_phone_country_code';
   static const String _lastPhoneNationalNumberPreferenceKey = 'auth_last_phone_national_number';
+  static const String _biometricEnabledPreferenceKey = 'auth_biometric_enabled';
 
   void _loadThemePreferences(SharedPreferences prefs) {
     final presetName = prefs.getString(_themePresetKey);
@@ -565,6 +572,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _selectedSignupPhoneChannel = _labelForDialCode(savedCountryCode);
     _phoneController.text = savedNationalNumber ??
         _phoneDigitsWithoutCountryCode(prefs.getString(_lastPhonePreferenceKey) ?? '');
+    _biometricEnabled = prefs.getBool(_biometricEnabledPreferenceKey) ?? false;
     _syncSignInIdentifierWithSelection();
   }
 
@@ -592,6 +600,41 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _lastPhoneNationalNumberPreferenceKey,
         phoneNationalNumber.trim(),
       );
+    }
+  }
+
+  Future<void> _refreshBiometricAvailability() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final supported = await _localAuth.isDeviceSupported();
+      final available = supported && canCheck;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _biometricAvailable = available;
+        if (!available) {
+          _biometricEnabled = false;
+        }
+      });
+      if (!available) {
+        await _prefs?.setBool(_biometricEnabledPreferenceKey, false);
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _biometricAvailable = false;
+        _biometricEnabled = false;
+      });
+    }
+  }
+
+  Future<void> _clearSecureSignIn() async {
+    await _prefs?.setBool(_biometricEnabledPreferenceKey, false);
+    if (mounted) {
+      setState(() => _biometricEnabled = false);
     }
   }
 
@@ -984,6 +1027,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   bool get _isAdminView => _activeUser?.isAdmin == true;
+
+  bool get _canViewOperationalDiagnostics {
+    final user = _activeUser;
+    return user?.isAdmin == true || user?.isDoctor == true;
+  }
 
   List<ForumQuestion> get _roleScopedQuestions {
     final user = _activeUser;
@@ -2330,6 +2378,28 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           const SizedBox(height: 10),
           _buildErrorNotice(context, _errorMessage!),
         ],
+        if (!isSignup && _biometricEnabled && _biometricAvailable) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  _authBusy || _biometricBusy ? null : _signInWithBiometrics,
+              icon: _biometricBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.fingerprint_rounded),
+              label: Text(
+                _biometricBusy
+                    ? 'Unlocking...'
+                    : 'Use biometric / device unlock',
+              ),
+            ),
+          ),
+        ],
         SizedBox(height: compact ? 16 : 20),
         SizedBox(
           width: double.infinity,
@@ -2992,7 +3062,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
             const SizedBox(width: 4),
             FilledButton(
-              onPressed: _openNotificationSettingsTab,
+              onPressed: _openWhatsAppActivationFlow,
               child: Text(activated ? 'Open' : 'Activate'),
             ),
           ],
@@ -3048,26 +3118,33 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       : 'Choose the doctor and broad topic, then write a simple title using everyday health terms.',
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedDoctorId,
-                  decoration:
-                      const InputDecoration(labelText: 'Doctor addressed'),
-                  items: _doctors
-                      .map(
-                        (doctor) => DropdownMenuItem<String>(
-                          value: doctor.id,
-                          child: Text(doctor.displayName),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _editingQuestionId == null
-                      ? (value) {
-                          if (value != null) {
-                            setState(() => _selectedDoctorId = value);
+                if (_doctors.isEmpty)
+                  _QuestionEmptyState(
+                    title: 'Doctor list is still loading',
+                    message:
+                        'The app could not show the doctor directory yet. Pull down to refresh or reopen the app; questions should not be submitted until a doctor is selected.',
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedDoctorId,
+                    decoration:
+                        const InputDecoration(labelText: 'Doctor addressed'),
+                    items: _doctors
+                        .map(
+                          (doctor) => DropdownMenuItem<String>(
+                            value: doctor.id,
+                            child: Text(doctor.displayName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _editingQuestionId == null
+                        ? (value) {
+                            if (value != null) {
+                              setState(() => _selectedDoctorId = value);
+                            }
                           }
-                        }
-                      : null,
-                ),
+                        : null,
+                  ),
                 if (selectedDoctor != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -3602,10 +3679,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+                ),
+                Chip(label: Text('${questions.length}')),
+              ],
+            ),
             const SizedBox(height: 16),
             if (questions.isEmpty)
-              const Text('No threads in this section yet.')
+              _QuestionEmptyState(
+                title: 'No visible threads here yet',
+                message:
+                    'MedicoHub fetched ${_questions.length} thread${_questions.length == 1 ? '' : 's'} from the server. This section only shows threads matching your role, public/private scope, date range, and topic filter.',
+              )
             else
               ...questions.expand(
                 (question) {
@@ -3971,60 +4059,76 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Ad Delivery',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  value: _useTestAds,
-                  onChanged: _supportsMobileAds
-                      ? (value) {
-                          setState(() => _useTestAds = value);
-                          unawaited(_persistAdPreferences());
-                          unawaited(_reloadAds());
-                        }
-                      : null,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Use test ads on this device'),
-                  subtitle: Text(
-                    _useTestAds
-                        ? 'Safe for QA while Play Store / App Store ad serving is still being finalized.'
-                        : 'Use live AdMob units. If serving is limited, the diagnostics below will show why the app is not receiving fill.',
+                if (_canViewOperationalDiagnostics) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Ad Delivery',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
-                ),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(18),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    value: _useTestAds,
+                    onChanged: _supportsMobileAds
+                        ? (value) {
+                            setState(() => _useTestAds = value);
+                            unawaited(_persistAdPreferences());
+                            unawaited(_reloadAds());
+                          }
+                        : null,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Use test ads on this device'),
+                    subtitle: Text(
+                      _useTestAds
+                          ? 'Safe for QA while Play Store / App Store ad serving is still being finalized.'
+                          : 'Use live AdMob units. If serving is limited, the diagnostics below will show why the app is not receiving fill.',
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Mode: $_adModeLabel',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text('Banner: $_bannerAdStatus'),
+                        const SizedBox(height: 6),
+                        Text('App open: $_appOpenAdStatus'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Text(
-                        'Mode: $_adModeLabel',
-                        style: Theme.of(context).textTheme.titleSmall,
+                      OutlinedButton(
+                        onPressed: _supportsMobileAds ? _reloadAds : null,
+                        child: const Text('Reload Ads'),
                       ),
-                      const SizedBox(height: 8),
-                      Text('Banner: $_bannerAdStatus'),
-                      const SizedBox(height: 6),
-                      Text('App open: $_appOpenAdStatus'),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _supportsMobileAds ? _reloadAds : null,
-                      child: const Text('Reload Ads'),
-                    ),
-                  ],
+                ],
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  value: _biometricEnabled,
+                  onChanged: _biometricAvailable
+                      ? (value) => unawaited(_setBiometricSignInEnabled(value))
+                      : null,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Biometric / device-unlock sign-in'),
+                  subtitle: Text(
+                    _biometricAvailable
+                        ? 'Optional. Unlocks this device’s saved Firebase session without storing your password.'
+                        : 'Not available on this device. Password sign-in remains active.',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -4620,8 +4724,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ),
           ),
         ],
-        if (_whatsAppNotifications.isNotEmpty ||
-            _emailComingLaterNotifications.isNotEmpty) ...[
+        if (_canViewOperationalDiagnostics &&
+            (_whatsAppNotifications.isNotEmpty ||
+                _emailComingLaterNotifications.isNotEmpty)) ...[
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -4873,6 +4978,109 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = 'Firebase sign-in failed: ${_firebaseFriendlyError(error)}';
       });
     }
+  }
+
+  Future<void> _signInWithBiometrics() async {
+    if (!_biometricAvailable || !_biometricEnabled || _biometricBusy) {
+      return;
+    }
+    setState(() {
+      _biometricBusy = true;
+      _errorMessage = null;
+    });
+    try {
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: 'Unlock your saved MedicoHub sign-in on this device.',
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+        ),
+      );
+      if (!authenticated) {
+        if (mounted) {
+          setState(() => _biometricBusy = false);
+        }
+        return;
+      }
+      final firebaseProfile = _auth.currentUserProfile();
+      if (firebaseProfile == null) {
+        await _clearSecureSignIn();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _biometricBusy = false;
+          _errorMessage =
+              'No saved Firebase session was found on this device. Please sign in once with your password.';
+        });
+        return;
+      }
+      final profile = await _loadOrCreateBackendProfile(firebaseProfile);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _activeUser = profile;
+        _biometricBusy = false;
+        _selectedLanguage =
+            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _emailController.text = profile.email;
+        _selectedSignInChannel = 'Email';
+        _signInIdentifierController.text = profile.email;
+        _hydratePhoneFields(profile);
+        _resetOtpJourney();
+      });
+      await _persistAuthPreferences(
+        email: profile.email,
+        phone: profile.phoneNumber,
+        phoneCountryCode: profile.phoneCountryCode,
+        phoneNationalNumber: profile.phoneNationalNumber,
+      );
+      await _refreshNotifications(profile.id);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _biometricBusy = false;
+        _errorMessage = 'Biometric sign-in is not available: $error';
+      });
+    }
+  }
+
+  Future<void> _setBiometricSignInEnabled(bool value) async {
+    if (!value) {
+      await _clearSecureSignIn();
+      return;
+    }
+    final user = _activeUser;
+    if (user == null) {
+      return;
+    }
+    if (!_biometricAvailable) {
+      setState(() {
+        _errorMessage =
+            'Biometric or device-unlock sign-in is not available on this device.';
+      });
+      return;
+    }
+    final authenticated = await _localAuth.authenticate(
+      localizedReason:
+          'Confirm device unlock to enable quick access to your saved Firebase session.',
+      options: const AuthenticationOptions(stickyAuth: true),
+    );
+    if (!authenticated) {
+      return;
+    }
+    await _prefs?.setBool(_biometricEnabledPreferenceKey, true);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _biometricEnabled = true;
+      _voiceStatus =
+          'Biometric/device sign-in is enabled. It unlocks this device’s saved Firebase session without storing your password.';
+    });
   }
 
   Future<void> _registerFirebaseUser() async {
@@ -6292,13 +6500,111 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  void _openNotificationSettingsTab() {
-    setState(() {
-      _tabIndex = 4;
-      _voiceStatus = _isWhatsAppActivationCoolingDown
-          ? 'Review the Delivery Channels section for today’s WhatsApp status.'
-          : 'Open Delivery Channels and tap the WhatsApp activation button to enable notifications for today.';
-    });
+  Future<void> _openWhatsAppActivationFlow() async {
+    final settings = _notificationSettings;
+    if (settings == null) {
+      setState(() {
+        _errorMessage = 'WhatsApp activation is still loading. Please try again in a moment.';
+      });
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              8,
+              24,
+              24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _isWhatsAppActivationCoolingDown
+                            ? Colors.green.withValues(alpha: 0.14)
+                            : Theme.of(context).colorScheme.primaryContainer,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.chat_rounded,
+                        color: _isWhatsAppActivationCoolingDown
+                            ? Colors.green
+                            : Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'WhatsApp Notifications',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _isWhatsAppActivationCoolingDown
+                      ? 'WhatsApp is marked active for today on this device.'
+                      : 'Tap Open WhatsApp, send the prepared activation message, then return here to confirm it.',
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.call_outlined),
+                  title: const Text('Send to'),
+                  subtitle: Text(settings.whatsAppActivationTarget),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.message_outlined),
+                  title: const Text('Message'),
+                  subtitle: Text(settings.whatsAppActivationPhrase),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isWhatsAppActivationCoolingDown
+                            ? null
+                            : () async {
+                                Navigator.of(sheetContext).pop();
+                                await _activateWhatsAppFor24Hours();
+                              },
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: Text(
+                          _isWhatsAppActivationCoolingDown
+                              ? 'Active Today'
+                              : 'Open WhatsApp',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _activateWhatsAppFor24Hours() async {
@@ -7170,224 +7476,298 @@ class _QuestionCard extends StatelessWidget {
         .where((message) => message.moderationState == 'hidden')
         .length;
     final latestMoment = _questionLatestMoment(question);
+    final previewText = _compactQuestionPreview(question);
+    final actionButtons = _buildActionButtons();
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(question.title,
-                      style: Theme.of(context).textTheme.titleLarge),
-                ),
-                if (question.premium)
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+        childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        title: Text(question.title, style: Theme.of(context).textTheme.titleMedium),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(label: Text(_questionStateLabel(question))),
+                  Chip(label: Text(question.isPublic ? 'Public' : 'Private')),
                   Chip(
-                    label: const Text('Paid'),
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
+                    label: Text(
+                      'Updated ${_formatQuestionTimestamp(latestMoment.toIso8601String())}',
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Chip(label: Text(_questionStateLabel(question))),
-                Chip(
-                  label: Text(question.isPublic ? 'Public thread' : 'Private thread'),
-                ),
-                Chip(
-                  label: Text('Updated ${_formatQuestionTimestamp(latestMoment.toIso8601String())}'),
-                ),
-                if (hiddenMessageCount > 0)
-                  Chip(label: Text('$hiddenMessageCount hidden')),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(question.body),
-            const SizedBox(height: 12),
-            Text(
-              'From ${question.authorName ?? 'Unknown user'} to ${question.targetDoctorName ?? 'Unknown doctor'}',
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${question.headingGroup} • ${question.language} • ${question.isPublic ? 'Public' : 'Private'}',
-            ),
+                  if (hiddenMessageCount > 0) Chip(label: Text('$hiddenMessageCount hidden')),
+                  if (question.premium) const Chip(label: Text('Paid')),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                previewText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'From ${question.authorName ?? 'Unknown user'} to ${question.targetDoctorName ?? 'Unknown doctor'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        children: [
+          Text(question.body),
+          const SizedBox(height: 12),
+          Text(
+            '${question.headingGroup} • ${question.language} • ${question.isPublic ? 'Public thread' : 'Private thread'}',
+          ),
+          if (question.tags.isNotEmpty) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: question.tags.map((tag) => Chip(label: Text(tag))).toList(),
             ),
+          ],
+          if (question.aiSummary.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
               question.aiSummary,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary),
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
             ),
-            if (question.threadMessages.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Conversation',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              ...question.threadMessages.map(
-                (message) => Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${message.actorName} • ${message.actorRole}',
-                                  style: Theme.of(context).textTheme.labelLarge,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _formatQuestionTimestamp(message.createdAt),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (canModerateMessage?.call(message) == true &&
-                              onModerateMessage != null)
-                            PopupMenuButton<String>(
-                              onSelected: (value) =>
-                                  onModerateMessage!(message, value),
-                              itemBuilder: (context) => [
-                                PopupMenuItem<String>(
-                                  value: message.moderationState == 'hidden'
-                                      ? 'visible'
-                                      : 'hidden',
-                                  child: Text(
-                                    message.moderationState == 'hidden'
-                                        ? 'Show message'
-                                        : 'Hide message',
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          Chip(label: Text(message.messageMode == 'voice' ? 'Voice note' : 'Text')),
-                          if (message.attachmentIds.isNotEmpty)
-                            Chip(label: Text('${message.attachmentIds.length} attachment${message.attachmentIds.length == 1 ? '' : 's'}')),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        message.moderationState == 'hidden'
-                            ? '[Message hidden by moderation]'
-                            : message.body,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            if (question.responses.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ...question.responses.map(
-                (response) => Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Doctor response • ${response.responseMode}',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatQuestionTimestamp(response.createdAt),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: response.labels
-                            .map((label) => Chip(label: Text(label)))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Key points: ${response.keyPoints}'),
-                      const SizedBox(height: 6),
-                      Text('What it means: ${response.whatItMeans}'),
-                      const SizedBox(height: 6),
-                      Text(
-                        'What to discuss with your doctor: ${response.whatToDiscussWithDoctor}',
-                      ),
-                      const SizedBox(height: 6),
-                      Text(response.fullText),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            if (onRespond != null || onAddFollowUp != null || onEdit != null || onTogglePublic != null || onDelete != null) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (onRespond != null)
-                    FilledButton(
-                      onPressed: onRespond,
-                      child: const Text('Respond'),
-                    ),
-                  if (onAddFollowUp != null)
-                    OutlinedButton(
-                      onPressed: onAddFollowUp,
-                      child: Text(followUpLabel),
-                    ),
-                  if (onEdit != null)
-                    OutlinedButton(
-                      onPressed: onEdit,
-                      child: const Text('Edit'),
-                    ),
-                  if (onTogglePublic != null)
-                    OutlinedButton(
-                      onPressed: onTogglePublic,
-                      child:
-                          Text(question.isPublic ? 'Make Private' : 'Make Public'),
-                    ),
-                  if (onDelete != null)
-                    TextButton(
-                      onPressed: onDelete,
-                      child: const Text('Delete'),
-                    ),
-                ],
-              ),
-            ],
           ],
+          if (question.threadMessages.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Conversation', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            ...question.threadMessages.map((message) => _ThreadMessageTile(
+                  message: message,
+                  canModerate: canModerateMessage?.call(message) == true,
+                  onModerate: onModerateMessage == null
+                      ? null
+                      : (state) => onModerateMessage!(message, state),
+                )),
+          ],
+          if (question.responses.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Doctor Responses', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            ...question.responses.map((response) => _DoctorResponseTile(response: response)),
+          ],
+          if (actionButtons.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: actionButtons),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildActionButtons() {
+    return [
+      if (onRespond != null)
+        FilledButton(onPressed: onRespond, child: const Text('Respond')),
+      if (onAddFollowUp != null)
+        OutlinedButton(onPressed: onAddFollowUp, child: Text(followUpLabel)),
+      if (onEdit != null)
+        OutlinedButton(onPressed: onEdit, child: const Text('Edit')),
+      if (onTogglePublic != null)
+        OutlinedButton(
+          onPressed: onTogglePublic,
+          child: Text(question.isPublic ? 'Make Private' : 'Make Public'),
         ),
+      if (onDelete != null)
+        TextButton(onPressed: onDelete, child: const Text('Delete')),
+    ];
+  }
+}
+
+class _QuestionEmptyState extends StatelessWidget {
+  const _QuestionEmptyState({
+    required this.title,
+    required this.message,
+  });
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.forum_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(message),
+        ],
+      ),
+    );
+  }
+}
+
+String _compactQuestionPreview(ForumQuestion question) {
+  final parts = <String>[
+    question.body,
+    if (question.threadMessages.isNotEmpty)
+      question.threadMessages.last.moderationState == 'hidden'
+          ? ''
+          : question.threadMessages.last.body,
+    if (question.responses.isNotEmpty) question.responses.last.fullText,
+  ];
+  return parts
+      .map((part) => part.replaceAll(RegExp(r'\s+'), ' ').trim())
+      .firstWhere((part) => part.isNotEmpty, orElse: () => 'Tap to open this thread.');
+}
+
+class _ThreadMessageTile extends StatelessWidget {
+  const _ThreadMessageTile({
+    required this.message,
+    required this.canModerate,
+    this.onModerate,
+  });
+
+  final ThreadMessage message;
+  final bool canModerate;
+  final ValueChanged<String>? onModerate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${message.actorName} • ${message.actorRole}',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatQuestionTimestamp(message.createdAt),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (canModerate && onModerate != null)
+                PopupMenuButton<String>(
+                  onSelected: onModerate,
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: message.moderationState == 'hidden'
+                          ? 'visible'
+                          : 'hidden',
+                      child: Text(
+                        message.moderationState == 'hidden'
+                            ? 'Show message'
+                            : 'Hide message',
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Chip(label: Text(message.messageMode == 'voice' ? 'Voice note' : 'Text')),
+              if (message.attachmentIds.isNotEmpty)
+                Chip(
+                  label: Text(
+                    '${message.attachmentIds.length} attachment${message.attachmentIds.length == 1 ? '' : 's'}',
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message.moderationState == 'hidden'
+                ? '[Message hidden by moderation]'
+                : message.body,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DoctorResponseTile extends StatelessWidget {
+  const _DoctorResponseTile({required this.response});
+
+  final DoctorResponse response;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Doctor response • ${response.responseMode}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatQuestionTimestamp(response.createdAt),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: response.labels.map((label) => Chip(label: Text(label))).toList(),
+          ),
+          const SizedBox(height: 8),
+          Text('Key points: ${response.keyPoints}'),
+          const SizedBox(height: 6),
+          Text('What it means: ${response.whatItMeans}'),
+          const SizedBox(height: 6),
+          Text('What to discuss with your doctor: ${response.whatToDiscussWithDoctor}'),
+          const SizedBox(height: 6),
+          Text(response.fullText),
+        ],
       ),
     );
   }

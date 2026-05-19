@@ -97,6 +97,19 @@ class FirebaseAuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  UserProfile? currentUserProfile() {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      return null;
+    }
+    return UserProfile.fromFirebase(
+      id: user.uid,
+      email: email,
+      displayName: user.displayName ?? email,
+    );
+  }
+
   Future<void> signOut() => _auth.signOut();
 
   Future<void> sendPasswordResetEmail({
