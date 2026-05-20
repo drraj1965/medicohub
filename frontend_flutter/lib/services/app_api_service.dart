@@ -12,7 +12,8 @@ class AppApiService {
 
   final http.Client _client;
   static final String _baseUrl = _resolveBaseUrl();
-  static const Duration _requestTimeout = Duration(seconds: 8);
+  static const Duration _requestTimeout = Duration(seconds: 20);
+  static const Duration _questionRequestTimeout = Duration(seconds: 30);
   static const String _publicBackendUrl =
       'https://medicohub-backend.fly.dev';
 
@@ -41,7 +42,7 @@ class AppApiService {
   Future<List<ForumQuestion>> fetchQuestions() async {
     final response = await _client
         .get(Uri.parse('$_baseUrl/questions'))
-        .timeout(_requestTimeout);
+        .timeout(_questionRequestTimeout);
     _ensureSuccess(response, 'questions');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data

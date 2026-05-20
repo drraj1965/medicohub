@@ -220,6 +220,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _biometricAvailable = false;
   bool _biometricBusy = false;
   bool _bottomNavigationExpanded = true;
+  bool _questionsRefreshing = false;
   int _tabIndex = 0;
 
   String _selectedExpiry = '7d';
@@ -1046,21 +1047,22 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user == null) {
       return const [];
     }
+    final availableQuestions = _questions
+        .where((question) => question.status.toLowerCase() != 'deleted')
+        .toList();
     if (user.isAdmin) {
-      return _questions;
+      return availableQuestions;
     }
     if (user.isDoctor) {
-      return _questions
+      return availableQuestions
           .where((question) =>
-              question.targetDoctorId == user.id ||
-              _normalizeEmail(question.targetDoctorEmail) ==
-                  _normalizeEmail(user.email) ||
+              _isAssignedToActiveDoctor(question, user) ||
               question.isPublic)
           .toList();
     }
-    return _questions
+    return availableQuestions
         .where((question) =>
-            question.authorId == user.id || question.isPublic)
+            _isAuthoredByActiveUser(question, user) || question.isPublic)
         .toList();
   }
 
@@ -1109,8 +1111,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   List<ForumQuestion> _filteredQuestionsForScope(_QuestionFeedScope scope) {
     final base = scope == _QuestionFeedScope.public
-        ? _questions.where((question) => question.isPublic).toList()
-        : _roleScopedQuestions.where((question) => !question.isPublic || question.authorId == _activeUser?.id || _activeUser?.isDoctor == true || _activeUser?.isAdmin == true).toList();
+        ? _questions
+            .where((question) =>
+                question.status.toLowerCase() != 'deleted' &&
+                question.isPublic)
+            .toList()
+        : _roleScopedQuestions.where((question) {
+            final user = _activeUser;
+            if (user == null) {
+              return false;
+            }
+            if (user.isAdmin || user.isDoctor) {
+              return true;
+            }
+            return _isAuthoredByActiveUser(question, user);
+          }).toList();
     final filtered = base.where((question) {
       if (_questionFilterTopic != null &&
           _questionFilterTopic!.isNotEmpty &&
@@ -3485,6 +3500,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user.isDoctor) {
       return ListView(
         children: [
+          _buildQuestionRefreshCard(context),
+          const SizedBox(height: 16),
           _buildQuestionFilterCard(context),
           const SizedBox(height: 16),
           _buildQuestionListSection(
@@ -3498,21 +3515,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             }).toList(),
           ),
           const SizedBox(height: 16),
-          _buildQuestionListSection(
+          _buildQuestionHistorySections(
             context,
-            title: 'History',
-            questions: _doctorHistoryQuestions.where(_questionMatchesDateFilter).where((question) {
-              if (_questionFilterTopic == null || _questionFilterTopic!.isEmpty) {
-                return true;
-              }
-              return question.headingGroup == _questionFilterTopic;
-            }).toList(),
+            title: user.isAdmin
+                ? 'Admin History & Moderation'
+                : 'Doctor History',
+            questions: _doctorHistoryQuestions,
           ),
         ],
       );
     }
     return Column(
       children: [
+        _buildQuestionRefreshCard(context),
+        const SizedBox(height: 16),
         _buildQuestionFilterCard(context),
         const SizedBox(height: 16),
         Expanded(
@@ -3535,9 +3551,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   child: TabBarView(
                     children: [
                       SingleChildScrollView(
-                        child: _buildQuestionListSection(
+                        child: _buildQuestionHistorySections(
                           context,
-                          title: 'My Questions',
+                          title: 'My Question History',
                           questions: myQuestions,
                         ),
                       ),
@@ -3557,6 +3573,111 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         ),
       ],
     );
+  }
+
+  Widget _buildQuestionRefreshCard(BuildContext context) {
+    final user = _activeUser;
+    final scopedCount = _roleScopedQuestions.length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user?.isAdmin == true
+                        ? 'Question control center'
+                        : user?.isDoctor == true
+                            ? 'Doctor question history'
+                            : 'Your question history',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Fetched ${_questions.length} total thread${_questions.length == 1 ? '' : 's'}; $scopedCount match your current access.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed:
+                  _questionsRefreshing ? null : () => _refreshQuestions(),
+              icon: _questionsRefreshing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(_questionsRefreshing ? 'Refreshing' : 'Refresh'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuestionHistorySections(
+    BuildContext context, {
+    required String title,
+    required List<ForumQuestion> questions,
+  }) {
+    final filtered = _questionsMatchingActiveFilters(questions);
+    final latest = filtered.isEmpty ? <ForumQuestion>[] : <ForumQuestion>[filtered.first];
+    final latestId = latest.isEmpty ? null : latest.first.id;
+    final oneMonthAgo = DateTime.now().subtract(const Duration(days: 30));
+    final lastMonth = filtered
+        .where((question) =>
+            question.id != latestId &&
+            !_latestConversationMoment(question).isBefore(oneMonthAgo))
+        .toList();
+    final older = filtered
+        .where((question) => _latestConversationMoment(question).isBefore(oneMonthAgo))
+        .toList();
+    return Column(
+      children: [
+        _buildQuestionListSection(
+          context,
+          title: '$title: Latest',
+          questions: latest,
+        ),
+        const SizedBox(height: 16),
+        _buildQuestionListSection(
+          context,
+          title: 'Posted in the last month',
+          questions: lastMonth,
+        ),
+        const SizedBox(height: 16),
+        _buildQuestionListSection(
+          context,
+          title: 'Older than one month',
+          questions: older,
+        ),
+      ],
+    );
+  }
+
+  List<ForumQuestion> _questionsMatchingActiveFilters(
+    List<ForumQuestion> source,
+  ) {
+    return source.where((question) {
+      if (_questionFilterTopic != null &&
+          _questionFilterTopic!.isNotEmpty &&
+          question.headingGroup != _questionFilterTopic &&
+          !question.tags.contains(_questionFilterTopic)) {
+        return false;
+      }
+      return _questionMatchesDateFilter(question);
+    }).toList()
+      ..sort(
+        (a, b) => _latestConversationMoment(b).compareTo(
+          _latestConversationMoment(a),
+        ),
+      );
   }
 
   Widget _buildQuestionFilterCard(BuildContext context) {
@@ -5020,6 +5141,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         phoneNationalNumber: profile.phoneNationalNumber,
       );
       await _refreshNotifications(profile.id);
+      await _refreshQuestions(showStatus: false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -5088,6 +5210,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         phoneNationalNumber: profile.phoneNationalNumber,
       );
       await _refreshNotifications(profile.id);
+      await _refreshQuestions(showStatus: false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -5186,6 +5309,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         phoneNationalNumber: profile.phoneNationalNumber,
       );
       await _refreshNotifications(profile.id);
+      await _refreshQuestions(showStatus: false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -5250,6 +5374,42 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _refreshQuestions({bool showStatus = true}) async {
+    if (_questionsRefreshing) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _questionsRefreshing = true;
+        if (showStatus) {
+          _voiceStatus = 'Refreshing question history...';
+        }
+      });
+    }
+    try {
+      final questions = await _api.fetchQuestions();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _questions = questions;
+        _questionsRefreshing = false;
+        if (showStatus) {
+          _voiceStatus =
+              'Loaded ${questions.length} question${questions.length == 1 ? '' : 's'}.';
+        }
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _questionsRefreshing = false;
+        _voiceStatus = 'Question history could not be refreshed: $error';
+      });
+    }
+  }
+
   Future<void> _useBackendDemoUser() async {
     setState(() {
       _authBusy = true;
@@ -5267,6 +5427,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _authBusy = false;
       });
       await _refreshNotifications(user.id);
+      await _refreshQuestions(showStatus: false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -5366,6 +5527,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _resetOtpJourney();
       });
       await _refreshNotifications(profile.id);
+      await _refreshQuestions(showStatus: false);
     } catch (error) {
       if (!mounted) {
         return;
@@ -5634,6 +5796,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _isAssignedToActiveDoctor(ForumQuestion question, UserProfile user) {
     return question.targetDoctorId == user.id ||
         _normalizeEmail(question.targetDoctorEmail) == _normalizeEmail(user.email);
+  }
+
+  bool _isAuthoredByActiveUser(ForumQuestion question, UserProfile user) {
+    return question.authorId == user.id ||
+        _normalizeEmail(question.authorEmail) == _normalizeEmail(user.email);
   }
 
   bool _latestThreadMessageNeedsDoctor(ForumQuestion question) {
