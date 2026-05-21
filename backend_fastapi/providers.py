@@ -96,6 +96,9 @@ class Repository(ABC):
     def create_notification(self, notification: dict[str, Any]) -> dict[str, Any]: ...
 
     @abstractmethod
+    def create_mail_message(self, message: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
     def list_otp_requests(self) -> list[dict[str, Any]]: ...
 
     @abstractmethod
@@ -325,6 +328,12 @@ class LocalJsonRepository(Repository):
         db["notifications"].append(notification)
         save_db(db)
         return notification
+
+    def create_mail_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db.setdefault("mail", []).append(message)
+        save_db(db)
+        return message
 
     def list_otp_requests(self) -> list[dict[str, Any]]:
         return self._db()["otp_requests"]
@@ -614,6 +623,10 @@ class FirestoreRepository(Repository):
     def create_notification(self, notification: dict[str, Any]) -> dict[str, Any]:
         self._collection("notifications").document(notification["id"]).set(notification)
         return notification
+
+    def create_mail_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        self._collection("mail").document(message["id"]).set(message)
+        return message
 
     def list_otp_requests(self) -> list[dict[str, Any]]:
         return [self._decode(doc.to_dict()) for doc in self._collection("otp_requests").stream()]

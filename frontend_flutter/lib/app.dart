@@ -3525,53 +3525,39 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         ],
       );
     }
-    return Column(
-      children: [
-        _buildQuestionRefreshCard(context),
-        const SizedBox(height: 16),
-        _buildQuestionFilterCard(context),
-        const SizedBox(height: 16),
-        Expanded(
-          child: DefaultTabController(
-            length: 2,
-            initialIndex: _questionFeedScope.index,
-            child: Column(
-              children: [
-                TabBar(
-                  onTap: (index) => setState(
-                    () => _questionFeedScope = _QuestionFeedScope.values[index],
-                  ),
-                  tabs: const [
-                    Tab(text: 'My Questions'),
-                    Tab(text: 'Public Questions'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      SingleChildScrollView(
-                        child: _buildQuestionHistorySections(
-                          context,
-                          title: 'My Question History',
-                          questions: myQuestions,
-                        ),
-                      ),
-                      SingleChildScrollView(
-                        child: _buildQuestionListSection(
-                          context,
-                          title: 'Public Questions',
-                          questions: publicQuestions,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    return DefaultTabController(
+      length: 2,
+      initialIndex: _questionFeedScope.index,
+      child: ListView(
+        children: [
+          _buildQuestionRefreshCard(context),
+          const SizedBox(height: 16),
+          _buildQuestionFilterCard(context),
+          const SizedBox(height: 16),
+          TabBar(
+            onTap: (index) => setState(
+              () => _questionFeedScope = _QuestionFeedScope.values[index],
             ),
+            tabs: const [
+              Tab(text: 'My Questions'),
+              Tab(text: 'Public Questions'),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          if (_questionFeedScope == _QuestionFeedScope.mine)
+            _buildQuestionHistorySections(
+              context,
+              title: 'My Question History',
+              questions: myQuestions,
+            )
+          else
+            _buildQuestionListSection(
+              context,
+              title: 'Public Questions',
+              questions: publicQuestions,
+            ),
+        ],
+      ),
     );
   }
 

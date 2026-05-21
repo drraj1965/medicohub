@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import smtplib
+from html import escape
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.parse import quote
@@ -378,6 +379,26 @@ def _whatsapp_link(*, phone_number: str, body: str) -> str:
     return f"https://wa.me/{digits}?text={quote(body)}"
 
 
+def _queue_firebase_trigger_email(*, to_email: str, subject: str, body: str) -> bool:
+    try:
+        repository.create_mail_message(
+            {
+                "id": make_id("mail"),
+                "to": [to_email],
+                "message": {
+                    "subject": subject,
+                    "text": body,
+                    "html": f"<pre>{escape(body)}</pre>",
+                },
+                "created_at": utc_now().isoformat(),
+                "source": "medicohub-backend",
+            }
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _queue_notification_pair(
     *,
     event_type: str,
@@ -390,10 +411,17 @@ def _queue_notification_pair(
     recipient_name = recipient.get("display_name", "MedicoHub user")
     if recipient_email:
         email_sent = False
+        firebase_email_queued = False
         try:
             email_sent = _send_email_message(recipient_email, subject, body)
         except Exception:
             email_sent = False
+        if not email_sent:
+            firebase_email_queued = _queue_firebase_trigger_email(
+                to_email=recipient_email,
+                subject=subject,
+                body=body,
+            )
         repository.create_notification(
             NotificationEvent(
                 event_type=event_type,  # type: ignore[arg-type]
@@ -404,7 +432,7 @@ def _queue_notification_pair(
                 subject=subject,
                 body=body,
                 deep_link=_mailto_link(to_email=recipient_email, subject=subject, body=body),
-                status="sent" if email_sent else "preview_ready",
+                status="sent" if email_sent else "queued" if firebase_email_queued else "preview_ready",
             ).model_dump(mode="json")
         )
     if recipient_phone:
