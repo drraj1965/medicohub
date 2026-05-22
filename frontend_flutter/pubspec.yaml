@@ -1,7 +1,7 @@
 name: medicohub
 description: Compliance-first doctor-patient education and forum MVP.
 publish_to: "none"
-version: 1.3.15+21
+version: 1.3.16+22
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -23,6 +23,7 @@ dependencies:
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
   local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.4
   google_mobile_ads: ^6.0.0
   package_info_plus: ^8.3.1
   flutter_colorpicker: ^1.1.0

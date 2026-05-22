@@ -48,6 +48,7 @@ class FirebaseAuthService {
         id: user.uid,
         email: user.email!,
         displayName: user.displayName ?? user.email!,
+        verified: user.emailVerified,
       );
     } catch (error, stackTrace) {
       throw _wrapException(
@@ -84,6 +85,7 @@ class FirebaseAuthService {
         id: refreshed?.uid ?? user.uid,
         email: refreshed?.email ?? user.email!,
         displayName: refreshed?.displayName ?? displayName,
+        verified: refreshed?.emailVerified ?? user.emailVerified,
       );
     } catch (error, stackTrace) {
       throw _wrapException(
@@ -97,6 +99,33 @@ class FirebaseAuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  bool get currentUserEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
+  Future<void> reloadCurrentUser() async {
+    await _auth.currentUser?.reload();
+  }
+
+  Future<void> sendEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) {
+        throw const FirebaseAuthDiagnosticException(
+          operation: 'sendEmailVerification',
+          summary: 'No authenticated Firebase user is available.',
+          details: 'Sign in before requesting an email verification link.',
+        );
+      }
+      await user.sendEmailVerification();
+    } catch (error, stackTrace) {
+      throw _wrapException(
+        operation: 'sendEmailVerification',
+        error: error,
+        stackTrace: stackTrace,
+        email: _auth.currentUser?.email ?? '(unknown)',
+      );
+    }
+  }
+
   UserProfile? currentUserProfile() {
     final user = _auth.currentUser;
     final email = user?.email;
@@ -107,6 +136,7 @@ class FirebaseAuthService {
       id: user.uid,
       email: email,
       displayName: user.displayName ?? email,
+      verified: user.emailVerified,
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
@@ -148,6 +149,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final UpdateService _updateService = UpdateService();
   final MedicoHubVoiceService _voiceService = MedicoHubVoiceService();
   final LocalAuthentication _localAuth = LocalAuthentication();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
@@ -219,6 +221,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool _biometricEnabled = false;
   bool _biometricAvailable = false;
   bool _biometricBusy = false;
+  bool _emailVerified = false;
+  bool _emailVerificationBusy = false;
   bool _bottomNavigationExpanded = true;
   bool _questionsRefreshing = false;
   int _tabIndex = 0;
@@ -335,6 +339,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _showAppOpenAdIfReady();
+      if (_activeUser != null) {
+        unawaited(_refreshEmailVerificationState());
+      }
     }
   }
 
@@ -538,6 +545,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _lastPhoneCountryCodePreferenceKey = 'auth_last_phone_country_code';
   static const String _lastPhoneNationalNumberPreferenceKey = 'auth_last_phone_national_number';
   static const String _biometricEnabledPreferenceKey = 'auth_biometric_enabled';
+  static const String _secureEmailKey = 'medicohub_secure_email';
+  static const String _securePasswordKey = 'medicohub_secure_password';
 
   void _loadThemePreferences(SharedPreferences prefs) {
     final presetName = prefs.getString(_themePresetKey);
@@ -635,9 +644,35 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Future<void> _clearSecureSignIn() async {
     await _prefs?.setBool(_biometricEnabledPreferenceKey, false);
+    await _secureStorage.delete(key: _secureEmailKey);
+    await _secureStorage.delete(key: _securePasswordKey);
     if (mounted) {
       setState(() => _biometricEnabled = false);
     }
+  }
+
+  Future<void> _saveSecureSignInCredentials({
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = email.trim();
+    if (normalizedEmail.isEmpty || password.isEmpty) {
+      return;
+    }
+    await _secureStorage.write(key: _secureEmailKey, value: normalizedEmail);
+    await _secureStorage.write(key: _securePasswordKey, value: password);
+  }
+
+  Future<({String email, String password})?> _readSecureSignInCredentials() async {
+    final email = await _secureStorage.read(key: _secureEmailKey);
+    final password = await _secureStorage.read(key: _securePasswordKey);
+    if (email == null ||
+        email.trim().isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+    return (email: email.trim(), password: password);
   }
 
   Future<void> _persistThemePreferences(MedicoHubThemeConfig config) async {
@@ -4032,8 +4067,79 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text('Mobile: ${user.phoneNumber}'),
                   ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: _emailVerified
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _emailVerified
+                                ? Icons.verified_outlined
+                                : Icons.mark_email_unread_outlined,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _emailVerified
+                                  ? 'Email verified'
+                                  : 'Verify your email once',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _emailVerified
+                            ? 'Your Firebase sign-in email has been confirmed.'
+                            : 'Open the verification link sent to ${user.email}. This helps protect account recovery and notifications.',
+                      ),
+                      if (!_emailVerified) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton(
+                              onPressed: _emailVerificationBusy
+                                  ? null
+                                  : () => unawaited(
+                                        _sendEmailVerificationLink(manual: true),
+                                      ),
+                              child: Text(
+                                _emailVerificationBusy
+                                    ? 'Sending...'
+                                    : 'Resend verification',
+                              ),
+                            ),
+                            FilledButton.tonal(
+                              onPressed: _emailVerificationBusy
+                                  ? null
+                                  : () => unawaited(
+                                        _refreshEmailVerificationState(
+                                          showStatus: true,
+                                        ),
+                                      ),
+                              child: const Text('Check verification'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
-                  'Biometric quick sign-in is planned for a dedicated secure-storage update, so account access remains stable across Android, iPhone, and Windows today.',
+                  'Biometric/device-unlock sign-in is optional and free on supported phones and computers. If enabled, your password is saved only in this device’s encrypted secure storage.',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.primary,
                   ),
@@ -4346,7 +4452,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   title: const Text('Biometric / device-unlock sign-in'),
                   subtitle: Text(
                     _biometricAvailable
-                        ? 'Optional. Unlocks this device’s saved Firebase session without storing your password.'
+                        ? 'Optional. Saves your password in this device’s encrypted storage and unlocks it with biometrics/device PIN.'
                         : 'Not available on this device. Password sign-in remains active.',
                   ),
                 ),
@@ -5113,6 +5219,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
+        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
         _selectedLanguage =
             profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
         _authBusy = false;
@@ -5126,6 +5233,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         phoneCountryCode: profile.phoneCountryCode,
         phoneNationalNumber: profile.phoneNationalNumber,
       );
+      if (_biometricEnabled) {
+        await _saveSecureSignInCredentials(
+          email: email,
+          password: _passwordController.text,
+        );
+      }
+      await _promptEmailVerificationIfNeeded(email);
       await _refreshNotifications(profile.id);
       await _refreshQuestions(showStatus: false);
     } catch (error) {
@@ -5161,8 +5275,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         }
         return;
       }
-      final firebaseProfile = _auth.currentUserProfile();
-      if (firebaseProfile == null) {
+      final credentials = await _readSecureSignInCredentials();
+      if (credentials == null) {
         await _clearSecureSignIn();
         if (!mounted) {
           return;
@@ -5170,22 +5284,28 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         setState(() {
           _biometricBusy = false;
           _errorMessage =
-              'No saved Firebase session was found on this device. Please sign in once with your password.';
+              'No saved password was found on this device. Please sign in once with your password, then enable biometric sign-in again.';
         });
         return;
       }
+      final firebaseProfile = await _auth.signInWithEmail(
+        email: credentials.email,
+        password: credentials.password,
+      );
       final profile = await _loadOrCreateBackendProfile(firebaseProfile);
       if (!mounted) {
         return;
       }
       setState(() {
         _activeUser = profile;
+        _emailVerified = firebaseProfile.verified || _auth.currentUserEmailVerified;
         _biometricBusy = false;
         _selectedLanguage =
             profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
         _emailController.text = profile.email;
         _selectedSignInChannel = 'Email';
         _signInIdentifierController.text = profile.email;
+        _passwordController.text = credentials.password;
         _hydratePhoneFields(profile);
         _resetOtpJourney();
       });
@@ -5224,14 +5344,26 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       });
       return;
     }
+    final password = _passwordController.text;
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage =
+            'Enter your password once before enabling biometric sign-in on this device.';
+      });
+      return;
+    }
     final authenticated = await _localAuth.authenticate(
       localizedReason:
-          'Confirm device unlock to enable quick access to your saved Firebase session.',
+          'Confirm device unlock to save your MedicoHub password on this device.',
       options: const AuthenticationOptions(stickyAuth: true),
     );
     if (!authenticated) {
       return;
     }
+    await _saveSecureSignInCredentials(
+      email: user.email,
+      password: password,
+    );
     await _prefs?.setBool(_biometricEnabledPreferenceKey, true);
     if (!mounted) {
       return;
@@ -5239,7 +5371,87 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     setState(() {
       _biometricEnabled = true;
       _voiceStatus =
-          'Biometric/device sign-in is enabled. It unlocks this device’s saved Firebase session without storing your password.';
+          'Biometric/device sign-in is enabled. Your password is saved only in this device’s encrypted secure storage.';
+    });
+  }
+
+  String _emailVerificationPromptKey(String email) {
+    return 'email_verification_prompted_${_normalizeEmail(email)}';
+  }
+
+  Future<void> _refreshEmailVerificationState({bool showStatus = false}) async {
+    try {
+      await _auth.reloadCurrentUser();
+      final verified = _auth.currentUserEmailVerified;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _emailVerified = verified;
+        if (showStatus) {
+          _voiceStatus = verified
+              ? 'Email verification is complete.'
+              : 'Email is not verified yet. Check your inbox for the verification link.';
+        }
+      });
+    } catch (error) {
+      if (!mounted || !showStatus) {
+        return;
+      }
+      setState(() {
+        _voiceStatus = 'Could not refresh email verification status: $error';
+      });
+    }
+  }
+
+  Future<void> _sendEmailVerificationLink({bool manual = false}) async {
+    final user = _activeUser;
+    if (user == null || user.email.isEmpty || _emailVerificationBusy) {
+      return;
+    }
+    setState(() {
+      _emailVerificationBusy = true;
+      _errorMessage = null;
+    });
+    try {
+      await _auth.sendEmailVerification();
+      await _prefs?.setBool(_emailVerificationPromptKey(user.email), true);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _emailVerificationBusy = false;
+        _voiceStatus =
+            'Verification email sent to ${user.email}. Open the link once, then return and tap Check verification.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _emailVerificationBusy = false;
+        _errorMessage =
+            'Could not send verification email: ${_firebaseFriendlyError(error)}';
+      });
+    }
+  }
+
+  Future<void> _promptEmailVerificationIfNeeded(String email) async {
+    await _refreshEmailVerificationState();
+    if (_emailVerified) {
+      return;
+    }
+    final prompted = _prefs?.getBool(_emailVerificationPromptKey(email)) ?? false;
+    if (!prompted) {
+      await _sendEmailVerificationLink();
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _voiceStatus =
+          'Please verify your email once from the link we sent earlier. You can resend it from Settings.';
     });
   }
 
@@ -5284,6 +5496,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
+        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
         _authBusy = false;
         _selectedSignInChannel = 'Email';
         _syncSignInIdentifierWithSelection();
@@ -5294,6 +5507,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         phoneCountryCode: profile.phoneCountryCode,
         phoneNationalNumber: profile.phoneNationalNumber,
       );
+      if (_biometricEnabled) {
+        await _saveSecureSignInCredentials(
+          email: profile.email,
+          password: _passwordController.text,
+        );
+      }
+      await _sendEmailVerificationLink();
       await _refreshNotifications(profile.id);
       await _refreshQuestions(showStatus: false);
     } catch (error) {

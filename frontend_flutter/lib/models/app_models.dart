@@ -59,13 +59,14 @@ class UserProfile {
     required String id,
     required String email,
     required String displayName,
+    bool verified = false,
   }) {
     return UserProfile(
       id: id,
       email: email,
       displayName: displayName,
       role: 'patient',
-      verified: false,
+      verified: verified,
       languages: const ['English'],
     );
   }
