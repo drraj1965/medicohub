@@ -1264,6 +1264,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   bool get _isSignInUsingEmail => _selectedSignInChannel == 'Email';
 
+  bool get _supportsGoogleSignIn =>
+      kIsWeb || Platform.isAndroid || Platform.isIOS;
+
   String get _selectedDialCode =>
       _isSignInUsingEmail ? '' : (_signInChannelOptions[_selectedSignInChannel] ?? '');
 
@@ -2543,6 +2546,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ? 'Unlocking...'
                     : 'Use biometric / device unlock',
               ),
+            ),
+          ),
+        ],
+        if (_supportsGoogleSignIn) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _authBusy ? null : _signInWithGoogle,
+              icon: const Icon(Icons.g_mobiledata_rounded),
+              label: Text(isSignup ? 'Sign up with Google' : 'Continue with Google'),
             ),
           ),
         ],
@@ -5253,6 +5267,55 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    if (!_supportsGoogleSignIn || _authBusy) {
+      return;
+    }
+    setState(() {
+      _authBusy = true;
+      _errorMessage = null;
+    });
+    try {
+      await _api.waitUntilReady();
+      final firebaseUser = await _auth.signInWithGoogle();
+      final profile = await _loadOrCreateGoogleBackendProfile(firebaseUser);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _activeUser = profile;
+        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
+        _selectedLanguage =
+            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _authBusy = false;
+        _emailController.text = profile.email;
+        _selectedSignInChannel = 'Email';
+        _signInIdentifierController.text = profile.email;
+        _hydratePhoneFields(profile);
+        _resetOtpJourney();
+      });
+      await _persistAuthPreferences(
+        email: profile.email,
+        phone: profile.phoneNumber,
+        phoneCountryCode: profile.phoneCountryCode,
+        phoneNationalNumber: profile.phoneNationalNumber,
+      );
+      await _refreshNotifications(profile.id);
+      await _refreshQuestions(showStatus: false);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _authBusy = false;
+        final message = _firebaseFriendlyError(error);
+        _errorMessage = message.contains('cancelled')
+            ? 'Google sign-in was cancelled.'
+            : 'Google sign-in failed: $message';
+      });
+    }
+  }
+
   Future<void> _signInWithBiometrics() async {
     if (!_biometricAvailable || !_biometricEnabled || _biometricBusy) {
       return;
@@ -5773,6 +5836,42 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ? [_selectedLanguage]
           : rosterMatch.languages,
       specialties: rosterMatch.specialties,
+    );
+  }
+
+  Future<UserProfile> _loadOrCreateGoogleBackendProfile(
+    UserProfile firebaseUser,
+  ) async {
+    final existing = await _api.fetchUserProfile(firebaseUser.id);
+    if (existing != null) {
+      return existing;
+    }
+    final rosterMatch = await _resolveRosterMatch(firebaseUser.email);
+    if (rosterMatch != null &&
+        _normalizeEmail(rosterMatch.email) == _normalizeEmail(firebaseUser.email)) {
+      return _api.upsertUserProfile(
+        id: firebaseUser.id,
+        email: firebaseUser.email,
+        displayName: rosterMatch.displayName,
+        phoneNumber: rosterMatch.phoneNumber,
+        phoneCountryCode: rosterMatch.phoneCountryCode,
+        phoneNationalNumber: rosterMatch.phoneNationalNumber,
+        role: rosterMatch.role,
+        languages: rosterMatch.languages.isEmpty
+            ? [_selectedLanguage]
+            : rosterMatch.languages,
+        specialties: rosterMatch.specialties,
+      );
+    }
+    return _api.upsertUserProfile(
+      id: firebaseUser.id,
+      email: firebaseUser.email,
+      displayName: firebaseUser.displayName.isEmpty
+          ? firebaseUser.email
+          : firebaseUser.displayName,
+      role: 'patient',
+      languages: [_selectedLanguage],
+      specialties: const [],
     );
   }
 

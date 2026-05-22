@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/app_models.dart';
 
@@ -93,6 +94,74 @@ class FirebaseAuthService {
         error: error,
         stackTrace: stackTrace,
         email: email,
+      );
+    }
+  }
+
+  Future<UserProfile> signInWithGoogle() async {
+    try {
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider();
+        provider.addScope('email');
+        provider.addScope('profile');
+        final credential = await _auth.signInWithPopup(provider);
+        final user = credential.user;
+        if (user == null || user.email == null) {
+          throw const FirebaseAuthDiagnosticException(
+            operation: 'signInWithGoogle',
+            summary: 'Firebase returned an empty Google user.',
+            details: 'The Google sign-in request succeeded but no user object was returned.',
+          );
+        }
+        return UserProfile.fromFirebase(
+          id: user.uid,
+          email: user.email!,
+          displayName: user.displayName ?? user.email!,
+          verified: user.emailVerified,
+        );
+      }
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        throw const FirebaseAuthDiagnosticException(
+          operation: 'signInWithGoogle',
+          summary: 'Google sign-in is not available on this platform yet.',
+          details:
+              'Use email/password on Windows for now. Google sign-in is enabled for Android, iOS, and web.',
+        );
+      }
+      final googleUser = await GoogleSignIn(scopes: const ['email', 'profile']).signIn();
+      if (googleUser == null) {
+        throw const FirebaseAuthDiagnosticException(
+          operation: 'signInWithGoogle',
+          summary: 'Google sign-in was cancelled.',
+          details: 'The account chooser was closed before a Google account was selected.',
+        );
+      }
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user == null || user.email == null) {
+        throw const FirebaseAuthDiagnosticException(
+          operation: 'signInWithGoogle',
+          summary: 'Firebase returned an empty Google user.',
+          details: 'The Google sign-in request succeeded but no user object was returned.',
+        );
+      }
+      return UserProfile.fromFirebase(
+        id: user.uid,
+        email: user.email!,
+        displayName: user.displayName ?? googleUser.displayName ?? user.email!,
+        verified: user.emailVerified,
+      );
+    } catch (error, stackTrace) {
+      throw _wrapException(
+        operation: 'signInWithGoogle',
+        error: error,
+        stackTrace: stackTrace,
+        email: _auth.currentUser?.email ?? '(google)',
       );
     }
   }
