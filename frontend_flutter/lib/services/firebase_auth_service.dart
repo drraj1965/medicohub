@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../firebase_options.dart';
 import '../models/app_models.dart';
 
 class FirebaseAuthDiagnosticException implements Exception {
@@ -128,7 +129,10 @@ class FirebaseAuthService {
               'Use email/password on Windows for now. Google sign-in is enabled for Android, iOS, and web.',
         );
       }
-      final googleUser = await GoogleSignIn(scopes: const ['email', 'profile']).signIn();
+      final googleUser = await GoogleSignIn(
+        clientId: Platform.isIOS ? DefaultFirebaseOptions.currentPlatform.iosClientId : null,
+        scopes: const ['email', 'profile'],
+      ).signIn();
       if (googleUser == null) {
         throw const FirebaseAuthDiagnosticException(
           operation: 'signInWithGoogle',
