@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 
 import '../firebase_options.dart';
 import '../models/app_models.dart';
@@ -25,7 +27,8 @@ class FirebaseAuthDiagnosticException implements Exception {
 }
 
 class FirebaseAuthService {
-  FirebaseAuthService({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance;
+  FirebaseAuthService({FirebaseAuth? auth})
+      : _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseAuth _auth;
 
@@ -43,7 +46,8 @@ class FirebaseAuthService {
         throw const FirebaseAuthDiagnosticException(
           operation: 'signInWithEmail',
           summary: 'Firebase returned an empty authenticated user.',
-          details: 'The sign-in request succeeded but no Firebase user object was returned.',
+          details:
+              'The sign-in request succeeded but no Firebase user object was returned.',
         );
       }
       return UserProfile.fromFirebase(
@@ -53,6 +57,24 @@ class FirebaseAuthService {
         verified: user.emailVerified,
       );
     } catch (error, stackTrace) {
+      if (!kIsWeb && Platform.isWindows && _isUnknownFirebaseAuthError(error)) {
+        try {
+          return await _signInWithEmailRestFallback(
+            email: email,
+            password: password,
+          );
+        } catch (fallbackError, fallbackStackTrace) {
+          debugPrint(
+              '[MedicoHubAuth][signInWithEmailRestFallback] $fallbackError');
+          debugPrintStack(stackTrace: fallbackStackTrace);
+          throw _wrapException(
+            operation: 'signInWithEmailRestFallback',
+            error: fallbackError,
+            stackTrace: fallbackStackTrace,
+            email: email,
+          );
+        }
+      }
       throw _wrapException(
         operation: 'signInWithEmail',
         error: error,
@@ -77,7 +99,8 @@ class FirebaseAuthService {
         throw const FirebaseAuthDiagnosticException(
           operation: 'registerWithEmail',
           summary: 'Firebase returned an empty registered user.',
-          details: 'The registration request succeeded but no Firebase user object was returned.',
+          details:
+              'The registration request succeeded but no Firebase user object was returned.',
         );
       }
       await user.updateDisplayName(displayName);
@@ -111,7 +134,8 @@ class FirebaseAuthService {
           throw const FirebaseAuthDiagnosticException(
             operation: 'signInWithGoogle',
             summary: 'Firebase returned an empty Google user.',
-            details: 'The Google sign-in request succeeded but no user object was returned.',
+            details:
+                'The Google sign-in request succeeded but no user object was returned.',
           );
         }
         return UserProfile.fromFirebase(
@@ -130,14 +154,17 @@ class FirebaseAuthService {
         );
       }
       final googleUser = await GoogleSignIn(
-        clientId: Platform.isIOS ? DefaultFirebaseOptions.currentPlatform.iosClientId : null,
+        clientId: Platform.isIOS
+            ? DefaultFirebaseOptions.currentPlatform.iosClientId
+            : null,
         scopes: const ['email', 'profile'],
       ).signIn();
       if (googleUser == null) {
         throw const FirebaseAuthDiagnosticException(
           operation: 'signInWithGoogle',
           summary: 'Google sign-in was cancelled.',
-          details: 'The account chooser was closed before a Google account was selected.',
+          details:
+              'The account chooser was closed before a Google account was selected.',
         );
       }
       final googleAuth = await googleUser.authentication;
@@ -151,7 +178,8 @@ class FirebaseAuthService {
         throw const FirebaseAuthDiagnosticException(
           operation: 'signInWithGoogle',
           summary: 'Firebase returned an empty Google user.',
-          details: 'The Google sign-in request succeeded but no user object was returned.',
+          details:
+              'The Google sign-in request succeeded but no user object was returned.',
         );
       }
       return UserProfile.fromFirebase(
@@ -172,7 +200,10 @@ class FirebaseAuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
-  bool get currentUserEmailVerified => _auth.currentUser?.emailVerified ?? false;
+  bool get currentUserEmailVerified =>
+      _auth.currentUser?.emailVerified ?? false;
+
+  bool get hasCurrentFirebaseUser => _auth.currentUser != null;
 
   Future<void> reloadCurrentUser() async {
     await _auth.currentUser?.reload();
@@ -339,6 +370,59 @@ class FirebaseAuthService {
     debugPrint('[MedicoHubAuth][$operation] ${wrapped.toString()}');
     debugPrintStack(stackTrace: stackTrace);
     return wrapped;
+  }
+
+  bool _isUnknownFirebaseAuthError(Object error) {
+    if (error is FirebaseAuthException) {
+      return error.code == 'unknown-error' || error.code == 'unknown';
+    }
+    return error.toString().contains('firebase_auth/unknown-error') ||
+        error.toString().contains('unknown-error');
+  }
+
+  Future<UserProfile> _signInWithEmailRestFallback({
+    required String email,
+    required String password,
+  }) async {
+    final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
+    final uri = Uri.parse(
+      'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey',
+    );
+    final response = await http.post(
+      uri,
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        'returnSecureToken': true,
+      }),
+    );
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = decoded['error'] as Map<String, dynamic>?;
+      throw FirebaseAuthDiagnosticException(
+        operation: 'signInWithEmailRestFallback',
+        summary: 'Firebase REST sign-in failed.',
+        details: error?['message']?.toString() ?? response.body,
+      );
+    }
+    final localId = decoded['localId']?.toString() ?? '';
+    final signedInEmail = decoded['email']?.toString() ?? email;
+    if (localId.isEmpty || signedInEmail.isEmpty) {
+      throw FirebaseAuthDiagnosticException(
+        operation: 'signInWithEmailRestFallback',
+        summary: 'Firebase REST sign-in returned an incomplete user.',
+        details: response.body,
+      );
+    }
+    return UserProfile.fromFirebase(
+      id: localId,
+      email: signedInEmail,
+      displayName: decoded['displayName']?.toString().isNotEmpty == true
+          ? decoded['displayName'].toString()
+          : signedInEmail,
+      verified: decoded['emailVerified'] == true,
+    );
   }
 
   String _platformLabel() {

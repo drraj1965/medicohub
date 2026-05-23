@@ -173,6 +173,11 @@ def root() -> dict:
     }
 
 
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok", "service": "MedicoHub Backend"}
+
+
 @app.post("/auth/login", response_model=AuthResponse)
 def login(payload: AuthRequest) -> AuthResponse:
     user = authenticate(payload.email, payload.password)

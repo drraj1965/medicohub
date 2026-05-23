@@ -55,16 +55,24 @@ const Map<String, String> _languageLocales = <String, String>{
   'Gujarati': 'gu-IN',
   'Bengali': 'bn-IN',
 };
-const List<String> _adPlacements = <String>['home', 'question', 'education', 'blog'];
+const List<String> _adPlacements = <String>[
+  'home',
+  'question',
+  'education',
+  'blog'
+];
 const String _androidBannerAdUnitId = 'ca-app-pub-9639630926363418/8715517435';
 const String _androidAppOpenAdUnitId = 'ca-app-pub-9639630926363418/3417519336';
 const String _iosBannerAdUnitId = 'ca-app-pub-9639630926363418/4253455835';
 const String _iosAppOpenAdUnitId = 'ca-app-pub-9639630926363418/8422205095';
-const String _androidTestBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
-const String _androidTestAppOpenAdUnitId = 'ca-app-pub-3940256099942544/9257395921';
+const String _androidTestBannerAdUnitId =
+    'ca-app-pub-3940256099942544/6300978111';
+const String _androidTestAppOpenAdUnitId =
+    'ca-app-pub-3940256099942544/9257395921';
 const String _iosTestBannerAdUnitId = 'ca-app-pub-3940256099942544/2934735716';
 const String _iosTestAppOpenAdUnitId = 'ca-app-pub-3940256099942544/5575463023';
-const String _brandLightAsset = 'assets/branding/medicohub_we_connect_light.png';
+const String _brandLightAsset =
+    'assets/branding/medicohub_we_connect_light.png';
 const String _brandDarkAsset = 'assets/branding/medicohub_we_connect_dark.png';
 const String _brandIconLightAsset = 'assets/branding/medicohub_icon_light.png';
 const String _brandIconDarkAsset = 'assets/branding/medicohub_icon_dark.png';
@@ -78,6 +86,7 @@ const Map<String, String> _signInChannelOptions = <String, String>{
   'Qatar (+974)': '+974',
   'Oman (+968)': '+968',
 };
+
 enum _QuestionFeedScope { mine, public }
 
 enum _QuestionDateFilter {
@@ -393,7 +402,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _currentVersion = currentVersion;
         _loading = false;
       });
-      _signInIdentifierFocusNode.addListener(_handleSignInIdentifierFocusChange);
+      _signInIdentifierFocusNode
+          .addListener(_handleSignInIdentifierFocusChange);
       _signupEmailFocusNode.addListener(_handleSignupEmailFocusChange);
       if (updateInfo != null) {
         unawaited(_handleAutoUpdateIfNeeded(updateInfo));
@@ -432,7 +442,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = attempt < 6
             ? null
             : 'Service is taking longer than expected to become available. Please try again in a moment.';
-        _voiceStatus = attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
+        _voiceStatus =
+            attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
       });
       if (attempt < 6) {
         _backendRetryTimer?.cancel();
@@ -498,8 +509,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           _appSettings = appSettings;
         }
         _selectedQuestionCategory = _availableQuestionTopics.contains(
-              _selectedQuestionCategory,
-            )
+          _selectedQuestionCategory,
+        )
             ? _selectedQuestionCategory
             : _availableQuestionTopics.first;
         if (_questionFilterTopic != null &&
@@ -536,7 +547,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = attempt < 6
             ? null
             : 'Could not load service data right now. Please try again in a moment.';
-        _voiceStatus = attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
+        _voiceStatus =
+            attempt < 6 ? 'Preparing secure services...' : _voiceStatus;
       });
       if (attempt < 6) {
         _backendRetryTimer?.cancel();
@@ -558,8 +570,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   static const String _useTestAdsPreferenceKey = 'ads_use_test_units';
   static const String _lastEmailPreferenceKey = 'auth_last_email';
   static const String _lastPhonePreferenceKey = 'auth_last_phone';
-  static const String _lastPhoneCountryCodePreferenceKey = 'auth_last_phone_country_code';
-  static const String _lastPhoneNationalNumberPreferenceKey = 'auth_last_phone_national_number';
+  static const String _lastPhoneCountryCodePreferenceKey =
+      'auth_last_phone_country_code';
+  static const String _lastPhoneNationalNumberPreferenceKey =
+      'auth_last_phone_national_number';
   static const String _biometricEnabledPreferenceKey = 'auth_biometric_enabled';
   static const String _secureEmailKey = 'medicohub_secure_email';
   static const String _securePasswordKey = 'medicohub_secure_password';
@@ -594,11 +608,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   void _loadAuthPreferences(SharedPreferences prefs) {
     _emailController.text = prefs.getString(_lastEmailPreferenceKey) ?? '';
-    final savedCountryCode = prefs.getString(_lastPhoneCountryCodePreferenceKey);
-    final savedNationalNumber = prefs.getString(_lastPhoneNationalNumberPreferenceKey);
+    final savedCountryCode =
+        prefs.getString(_lastPhoneCountryCodePreferenceKey);
+    final savedNationalNumber =
+        prefs.getString(_lastPhoneNationalNumberPreferenceKey);
     _selectedSignupPhoneChannel = _labelForDialCode(savedCountryCode);
     _phoneController.text = savedNationalNumber ??
-        _phoneDigitsWithoutCountryCode(prefs.getString(_lastPhonePreferenceKey) ?? '');
+        _phoneDigitsWithoutCountryCode(
+            prefs.getString(_lastPhonePreferenceKey) ?? '');
     _biometricEnabled = prefs.getBool(_biometricEnabledPreferenceKey) ?? false;
     _syncSignInIdentifierWithSelection();
   }
@@ -620,7 +637,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       await prefs.setString(_lastPhonePreferenceKey, phone.trim());
     }
     if (phoneCountryCode != null && phoneCountryCode.trim().isNotEmpty) {
-      await prefs.setString(_lastPhoneCountryCodePreferenceKey, phoneCountryCode.trim());
+      await prefs.setString(
+          _lastPhoneCountryCodePreferenceKey, phoneCountryCode.trim());
     }
     if (phoneNationalNumber != null && phoneNationalNumber.trim().isNotEmpty) {
       await prefs.setString(
@@ -679,7 +697,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     await _secureStorage.write(key: _securePasswordKey, value: password);
   }
 
-  Future<({String email, String password})?> _readSecureSignInCredentials() async {
+  Future<({String email, String password})?>
+      _readSecureSignInCredentials() async {
     final email = await _secureStorage.read(key: _secureEmailKey);
     final password = await _secureStorage.read(key: _securePasswordKey);
     if (email == null ||
@@ -705,7 +724,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _updateFrequency = UpdateCheckFrequencyLabel.fromStorage(
       prefs.getString(UpdateService.preferenceFrequencyKey),
     );
-    _updateAutoOpen = prefs.getBool(UpdateService.preferenceAutoOpenKey) ?? false;
+    _updateAutoOpen =
+        prefs.getBool(UpdateService.preferenceAutoOpenKey) ?? false;
   }
 
   void _loadAdPreferences(SharedPreferences prefs) {
@@ -735,7 +755,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     await prefs.setBool(_useTestAdsPreferenceKey, _useTestAds);
   }
 
-  bool get _supportsMobileAds => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _supportsMobileAds =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   String get _bannerAdUnitId {
     if (Platform.isAndroid) {
@@ -765,7 +786,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return '';
   }
 
-  String get _adModeLabel => _useTestAds || kDebugMode ? 'Test ads' : 'Live ads';
+  String get _adModeLabel =>
+      _useTestAds || kDebugMode ? 'Test ads' : 'Live ads';
 
   Future<void> _initializeMobileAdsIfNeeded() async {
     if (!_supportsMobileAds) {
@@ -783,7 +805,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     setState(() {
       _mobileAdsInitialized = true;
       _bannerAdStatus = '$_adModeLabel initialized. Waiting for banner fill...';
-      _appOpenAdStatus = '$_adModeLabel initialized. Waiting for app-open fill...';
+      _appOpenAdStatus =
+          '$_adModeLabel initialized. Waiting for app-open fill...';
     });
     _loadBannerAd();
     _loadAppOpenAd();
@@ -864,7 +887,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
     if (mounted) {
       setState(() {
-        _appOpenAdStatus = 'Loading ${_adModeLabel.toLowerCase()} app-open ad...';
+        _appOpenAdStatus =
+            'Loading ${_adModeLabel.toLowerCase()} app-open ad...';
       });
     }
     AppOpenAd.load(
@@ -1075,7 +1099,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(trimmed)) {
       return trimmed;
     }
-    final uri = Uri.tryParse(trimmed.contains('://') ? trimmed : 'https://$trimmed');
+    final uri =
+        Uri.tryParse(trimmed.contains('://') ? trimmed : 'https://$trimmed');
     if (uri == null) {
       return '';
     }
@@ -1092,7 +1117,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         return watchId;
       }
       if (uri.pathSegments.length >= 2 &&
-          (uri.pathSegments.first == 'shorts' || uri.pathSegments.first == 'embed')) {
+          (uri.pathSegments.first == 'shorts' ||
+              uri.pathSegments.first == 'embed')) {
         final id = uri.pathSegments[1];
         return RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id) ? id : '';
       }
@@ -1100,12 +1126,114 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return '';
   }
 
-  String _readableMarkdown(String value) {
-    return value
-        .replaceAll(RegExp(r'^\s*#{1,6}\s*', multiLine: true), '')
-        .replaceAll('**', '')
-        .replaceAll('__', '')
-        .replaceAll(RegExp(r'\[([^\]]+)\]\(([^)]+)\)'), r'$1 ($2)');
+  Widget _buildArticleMarkdown(BuildContext context, String value) {
+    final theme = Theme.of(context).textTheme;
+    final lines = value.replaceAll('\r\n', '\n').split('\n');
+    final children = <Widget>[];
+    for (final rawLine in lines) {
+      final line = rawLine.trimRight();
+      if (line.trim().isEmpty) {
+        children.add(const SizedBox(height: 10));
+        continue;
+      }
+      final headingMatch = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line);
+      if (headingMatch != null) {
+        final level = headingMatch.group(1)!.length;
+        final text = headingMatch.group(2)!.trim();
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 6),
+            child: Text(
+              _stripInlineMarkdown(text),
+              style: level <= 2
+                  ? theme.titleLarge
+                  : theme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+        continue;
+      }
+      final bulletMatch = RegExp(r'^\s*[-*]\s+(.+)$').firstMatch(line);
+      if (bulletMatch != null) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 7),
+                  child: Icon(Icons.circle, size: 6),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildInlineMarkdownText(
+                    context,
+                    bulletMatch.group(1)!,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        continue;
+      }
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildInlineMarkdownText(context, line),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _buildInlineMarkdownText(BuildContext context, String value) {
+    return RichText(
+      text: TextSpan(
+        style: Theme.of(context).textTheme.bodyMedium,
+        children: _inlineMarkdownSpans(value),
+      ),
+    );
+  }
+
+  List<TextSpan> _inlineMarkdownSpans(String value) {
+    final spans = <TextSpan>[];
+    final pattern = RegExp(r'(\*\*\*|\*\*|__)(.+?)\1');
+    var cursor = 0;
+    for (final match in pattern.allMatches(value)) {
+      if (match.start > cursor) {
+        spans.add(
+          TextSpan(
+              text: _stripLinkMarkup(value.substring(cursor, match.start))),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: _stripLinkMarkup(match.group(2)!),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < value.length) {
+      spans.add(TextSpan(text: _stripLinkMarkup(value.substring(cursor))));
+    }
+    return spans.isEmpty ? [TextSpan(text: _stripLinkMarkup(value))] : spans;
+  }
+
+  String _stripInlineMarkdown(String value) {
+    return _stripLinkMarkup(value.replaceAll('**', '').replaceAll('__', ''));
+  }
+
+  String _stripLinkMarkup(String value) {
+    return value.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+      (match) => '${match.group(1)} (${match.group(2)})',
+    );
   }
 
   bool _canModerateOrOwnArticleComment(BlogArticleComment comment) {
@@ -1114,6 +1242,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       return false;
     }
     return user.isDoctor || user.isAdmin || comment.actorId == user.id;
+  }
+
+  bool _canEditArticle(BlogArticle article) {
+    final user = _activeUser;
+    if (user == null) {
+      return false;
+    }
+    return user.isAdmin || article.authorId == user.id;
   }
 
   Future<void> _likeArticle(String articleId) async {
@@ -1282,8 +1418,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user.isDoctor) {
       return availableQuestions
           .where((question) =>
-              _isAssignedToActiveDoctor(question, user) ||
-              question.isPublic)
+              _isAssignedToActiveDoctor(question, user) || question.isPublic)
           .toList();
     }
     return availableQuestions
@@ -1301,9 +1436,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       if (!user.isAdmin && !_isAssignedToActiveDoctor(question, user)) {
         return false;
       }
-      return question.status == 'open' || _latestThreadMessageNeedsDoctor(question);
+      return question.status == 'open' ||
+          _latestThreadMessageNeedsDoctor(question);
     }).toList()
-      ..sort((a, b) => _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
+      ..sort((a, b) =>
+          _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
   }
 
   List<ForumQuestion> get _doctorHistoryQuestions {
@@ -1311,20 +1448,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user == null || !user.isDoctor) {
       return const [];
     }
-    final currentIds = _doctorCurrentQuestions.map((question) => question.id).toSet();
+    final currentIds =
+        _doctorCurrentQuestions.map((question) => question.id).toSet();
     return _roleScopedQuestions.where((question) {
       if (!user.isAdmin && !_isAssignedToActiveDoctor(question, user)) {
         return false;
       }
       return !currentIds.contains(question.id);
     }).toList()
-      ..sort((a, b) => _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
+      ..sort((a, b) =>
+          _latestConversationMoment(b).compareTo(_latestConversationMoment(a)));
   }
 
   List<NotificationOutboxItem> get _whatsAppNotifications {
-    final items = _notifications.where((item) => item.channel == 'whatsapp').toList();
+    final items =
+        _notifications.where((item) => item.channel == 'whatsapp').toList();
     items.sort(
-      (a, b) => _tryParseDate(b.createdAt).compareTo(_tryParseDate(a.createdAt)),
+      (a, b) =>
+          _tryParseDate(b.createdAt).compareTo(_tryParseDate(a.createdAt)),
     );
     return items;
   }
@@ -1339,8 +1480,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final base = scope == _QuestionFeedScope.public
         ? _questions
             .where((question) =>
-                question.status.toLowerCase() != 'deleted' &&
-                question.isPublic)
+                question.status.toLowerCase() != 'deleted' && question.isPublic)
             .toList()
         : _roleScopedQuestions.where((question) {
             final user = _activeUser;
@@ -1405,8 +1545,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
-  bool get _canConfigureNotificationSettings =>
-      _activeUser?.isAdmin == true;
+  bool get _canConfigureNotificationSettings => _activeUser?.isAdmin == true;
 
   String? get _whatsAppActivationPreferenceKey {
     final user = _activeUser;
@@ -1458,13 +1597,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   bool get _supportsGoogleSignIn =>
       kIsWeb || Platform.isAndroid || Platform.isIOS;
 
-  String get _selectedDialCode =>
-      _isSignInUsingEmail ? '' : (_signInChannelOptions[_selectedSignInChannel] ?? '');
+  String get _selectedDialCode => _isSignInUsingEmail
+      ? ''
+      : (_signInChannelOptions[_selectedSignInChannel] ?? '');
 
-  String? get _selectedSignupDialCode =>
-      _selectedSignupPhoneChannel == null
-          ? null
-          : _signInChannelOptions[_selectedSignupPhoneChannel!];
+  String? get _selectedSignupDialCode => _selectedSignupPhoneChannel == null
+      ? null
+      : _signInChannelOptions[_selectedSignupPhoneChannel!];
 
   String get _formattedSignInDestination {
     final raw = _signInIdentifierController.text.trim();
@@ -1492,7 +1631,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   String _phoneDigitsWithoutCountryCode(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    for (final code in _signInChannelOptions.values.where((value) => value != 'email')) {
+    for (final code
+        in _signInChannelOptions.values.where((value) => value != 'email')) {
       final countryDigits = code.replaceAll('+', '');
       if (digits.startsWith(countryDigits)) {
         return digits.substring(countryDigits.length);
@@ -1968,8 +2108,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             const SizedBox(height: 6),
                             Text(
                               'We Connect',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.primary,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
                                   ),
                             ),
                           ],
@@ -2038,7 +2182,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
-                  Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                  Text(
+                      '${item.type} • ${item.durationMinutes} min • ${item.language}'),
                   const SizedBox(height: 16),
                   Text(item.summary),
                   if (item.url.isNotEmpty) ...[
@@ -2134,7 +2279,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Text(_readableMarkdown(article.body)),
+                  _buildArticleMarkdown(context, article.body),
                   const SizedBox(height: 18),
                   Wrap(
                     spacing: 8,
@@ -2162,8 +2307,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           icon: const Icon(Icons.play_circle_outline_rounded),
                           label: const Text('Open video'),
                         ),
-                      if (_youtubeOauthActionsEnabled &&
-                          videoId.isNotEmpty)
+                      if (_canEditArticle(article))
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _startEditArticle(article);
+                          },
+                          icon: const Icon(Icons.edit_rounded),
+                          label: const Text('Edit article'),
+                        ),
+                      if (_youtubeOauthActionsEnabled && videoId.isNotEmpty)
                         OutlinedButton.icon(
                           // Pending Google OAuth verification. This action must not
                           // be exposed until the YouTube force-ssl scope is approved.
@@ -2174,7 +2327,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Text('Comments', style: Theme.of(context).textTheme.titleMedium),
+                  Text('Comments',
+                      style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   TextField(
                     controller: commentController,
@@ -2183,7 +2337,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     maxLines: 4,
                     decoration: const InputDecoration(
                       labelText: 'Add a comment',
-                      helperText: 'Emojis and device speech-to-text are supported by your keyboard.',
+                      helperText:
+                          'Emojis and device speech-to-text are supported by your keyboard.',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -2191,7 +2346,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     alignment: Alignment.centerRight,
                     child: FilledButton.icon(
                       onPressed: () async {
-                        await _addArticleComment(article.id, commentController.text);
+                        await _addArticleComment(
+                            article.id, commentController.text);
                         commentController.clear();
                       },
                       icon: const Icon(Icons.send_rounded),
@@ -2231,8 +2387,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final isSignup = _createAccountMode;
     final showPassword = !isSignup;
     const showOtpActions = false;
-    final brandAsset =
-        Theme.of(context).brightness == Brightness.dark ? _brandDarkAsset : _brandLightAsset;
+    final brandAsset = Theme.of(context).brightness == Brightness.dark
+        ? _brandDarkAsset
+        : _brandLightAsset;
     final media = MediaQuery.of(context);
 
     return Container(
@@ -2240,7 +2397,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         gradient: LinearGradient(
           colors: [
             Theme.of(context).colorScheme.surface,
-            Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
+            Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.65),
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -2259,7 +2419,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             constraints: const BoxConstraints(maxWidth: 980),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: 0.94),
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
@@ -2341,7 +2504,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
           colors: [
-            Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.65),
+            Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.65),
             Theme.of(context).colorScheme.surface,
           ],
           begin: Alignment.topLeft,
@@ -2495,7 +2661,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             SizedBox(height: spacing),
             DropdownButtonFormField<String>(
               initialValue: _selectedSignupPhoneChannel,
-              decoration: const InputDecoration(labelText: 'Country/region code'),
+              decoration:
+                  const InputDecoration(labelText: 'Country/region code'),
               items: _signInChannelOptions.keys
                   .where((label) => label != 'Email')
                   .map(
@@ -2530,7 +2697,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             SizedBox(height: spacing),
             DropdownButtonFormField<String>(
               initialValue: _selectedLanguage,
-              decoration: const InputDecoration(labelText: 'Preferred language'),
+              decoration:
+                  const InputDecoration(labelText: 'Preferred language'),
               items: _languageLocales.keys
                   .map(
                     (language) => DropdownMenuItem<String>(
@@ -2579,7 +2747,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             SizedBox(height: spacing),
             DropdownButtonFormField<String>(
               initialValue: _selectedSignupPhoneChannel,
-              decoration: const InputDecoration(labelText: 'Country/region code'),
+              decoration:
+                  const InputDecoration(labelText: 'Country/region code'),
               items: _signInChannelOptions.keys
                   .where((label) => label != 'Email')
                   .map(
@@ -2599,12 +2768,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedAccountRole,
-                    decoration: const InputDecoration(labelText: 'Account role'),
+                    decoration:
+                        const InputDecoration(labelText: 'Account role'),
                     items: _accountRoles
                         .map(
                           (role) => DropdownMenuItem<String>(
                             value: role,
-                            child: Text(role[0].toUpperCase() + role.substring(1)),
+                            child:
+                                Text(role[0].toUpperCase() + role.substring(1)),
                           ),
                         )
                         .toList(),
@@ -2619,7 +2790,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedLanguage,
-                    decoration: const InputDecoration(labelText: 'Preferred language'),
+                    decoration:
+                        const InputDecoration(labelText: 'Preferred language'),
                     items: _languageLocales.keys
                         .map(
                           (language) => DropdownMenuItem<String>(
@@ -2694,7 +2866,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               initialValue: _selectedSignInChannel.isEmpty
                   ? null
                   : _selectedSignInChannel,
-              decoration: const InputDecoration(labelText: 'Country/region code'),
+              decoration:
+                  const InputDecoration(labelText: 'Country/region code'),
               items: _signInChannelOptions.keys
                   .where((label) => label != 'Email')
                   .map(
@@ -2721,8 +2894,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           TextField(
             controller: _signInIdentifierController,
             focusNode: _signInIdentifierFocusNode,
-            keyboardType:
-                _isSignInUsingEmail ? TextInputType.emailAddress : TextInputType.phone,
+            keyboardType: _isSignInUsingEmail
+                ? TextInputType.emailAddress
+                : TextInputType.phone,
             textInputAction: TextInputAction.next,
             autocorrect: false,
             enableSuggestions: false,
@@ -2730,7 +2904,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ? const [AutofillHints.username, AutofillHints.email]
                 : const [AutofillHints.telephoneNumber],
             decoration: InputDecoration(
-              labelText: _isSignInUsingEmail ? 'Email address' : 'Mobile number',
+              labelText:
+                  _isSignInUsingEmail ? 'Email address' : 'Mobile number',
               helperText: _isSignInUsingEmail
                   ? 'Use the email address registered with your account.'
                   : 'Use the mobile number registered with your account.',
@@ -2811,7 +2986,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               labelText: 'Create password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
-                onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                onPressed: () =>
+                    setState(() => _passwordVisible = !_passwordVisible),
                 icon: Icon(
                   _passwordVisible
                       ? Icons.visibility_off_outlined
@@ -2890,8 +3066,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             child: OutlinedButton.icon(
               onPressed: _authBusy ? null : _signInWithGoogle,
               icon: const Icon(Icons.g_mobiledata_rounded),
-              label: Text(isSignup ? 'Sign up with Google' : 'Continue with Google'),
+              label: Text(
+                  isSignup ? 'Sign up with Google' : 'Continue with Google'),
             ),
+          ),
+        ] else ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.g_mobiledata_rounded),
+              label: const Text('Google sign-in on Android/iOS'),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Use email/password on Windows. Google sign-in remains enabled for phone and tablet builds.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
         SizedBox(height: compact ? 16 : 20),
@@ -2902,7 +3094,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ? null
                 : (isSignup
                     ? (_signupPolicyAccepted ? _registerFirebaseUser : null)
-                    : (showOtpActions ? _verifyInlineOtp : _signInWithFirebase)),
+                    : (showOtpActions
+                        ? _verifyInlineOtp
+                        : _signInWithFirebase)),
             child: Text(
               _authBusy
                   ? (isSignup ? 'Creating...' : 'Please wait...')
@@ -2927,7 +3121,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           child: Column(
             children: [
               Text(
-                isSignup ? 'Already have an account?' : "Don't have an account?",
+                isSignup
+                    ? 'Already have an account?'
+                    : "Don't have an account?",
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -2956,10 +3152,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final style = Theme.of(context).textTheme.bodySmall;
     return RichText(
       text: TextSpan(
-        style: style?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        style: style?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
         children: [
           const TextSpan(
-            text: 'By clicking continue you acknowledge you have read and agreed to our ',
+            text:
+                'By clicking continue you acknowledge you have read and agreed to our ',
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
@@ -3005,9 +3203,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Widget _buildHomeTab(BuildContext context) {
     final user = _activeUser!;
     final scopedQuestions = _roleScopedQuestions;
-    final pendingQuestions = scopedQuestions
-        .where((question) => question.status == 'open')
-        .length;
+    final pendingQuestions =
+        scopedQuestions.where((question) => question.status == 'open').length;
     final homeCampaigns = _matchingCampaignsForText(
       placement: 'home',
       primaryText: user.specialties.join(' '),
@@ -3049,7 +3246,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             final cards = <Widget>[
               _buildDashboardCard(
                 context,
-                title: user.isAdmin ? 'Admin Dashboard' : user.isDoctor ? 'Doctor Dashboard' : 'Patient Dashboard',
+                title: user.isAdmin
+                    ? 'Admin Dashboard'
+                    : user.isDoctor
+                        ? 'Doctor Dashboard'
+                        : 'Patient Dashboard',
                 body: user.isAdmin
                     ? 'Roster, moderation, education, and app operations in one place.'
                     : user.isDoctor
@@ -3068,7 +3269,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 _buildDashboardCard(
                   context,
                   title: 'Doctor Dashboard',
-                  body: 'Admins are also doctors in MedicoHub. Review questions routed to named doctors, post educational articles, and respond if coverage is needed.',
+                  body:
+                      'Admins are also doctors in MedicoHub. Review questions routed to named doctors, post educational articles, and respond if coverage is needed.',
                   statLines: [
                     'Directed to you: ${_questions.where((item) => item.targetDoctorId == user.id).length}',
                     'Published articles: ${_blogArticles.where((item) => item.authorId == user.id).length}',
@@ -3142,27 +3344,28 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ),
                 const SizedBox(height: 12),
                 ...scopedQuestions.take(3).map(
-                  (question) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.bolt_rounded),
-                    title: Text(question.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                      question.body,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      (question) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.bolt_rounded),
+                        title: Text(question.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          question.body,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => setState(() => _tabIndex = 2),
+                          child: const Text('Open'),
+                        ),
+                      ),
                     ),
-                    trailing: TextButton(
-                      onPressed: () => setState(() => _tabIndex = 2),
-                      child: const Text('Open'),
-                    ),
-                  ),
-                ),
                 if (_updateInfo != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     'Update available: ${_updateInfo!.latestVersion}',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.primary),
                   ),
                 ],
               ],
@@ -3270,29 +3473,29 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               Text(emptyText)
             else
               ...questions.take(5).map(
-                (question) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _QuestionCard(
-                    question: question,
-                    followUpLabel: _activeUser?.isDoctor == true
-                        ? 'Comment on Thread'
-                        : 'Add Follow-up',
-                    onRespond: _canRespondToQuestion(question)
-                        ? () => _openDoctorResponseDialog(question)
-                        : null,
-                    onAddFollowUp: _canAddFollowUp(question)
-                        ? () => _openThreadMessageDialog(question)
-                        : null,
-                    canModerateMessage: (message) =>
-                        _canModerateThreadMessage(question, message),
-                    onModerateMessage: (message, state) =>
-                        _moderateThreadMessage(question, message, state),
-                    canDeleteResponses: _canDeleteDoctorResponses(question),
-                    onDeleteResponses: (responses) =>
-                        _deleteDoctorResponses(question, responses),
+                    (question) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _QuestionCard(
+                        question: question,
+                        followUpLabel: _activeUser?.isDoctor == true
+                            ? 'Comment on Thread'
+                            : 'Add Follow-up',
+                        onRespond: _canRespondToQuestion(question)
+                            ? () => _openDoctorResponseDialog(question)
+                            : null,
+                        onAddFollowUp: _canAddFollowUp(question)
+                            ? () => _openThreadMessageDialog(question)
+                            : null,
+                        canModerateMessage: (message) =>
+                            _canModerateThreadMessage(question, message),
+                        onModerateMessage: (message, state) =>
+                            _moderateThreadMessage(question, message, state),
+                        canDeleteResponses: _canDeleteDoctorResponses(question),
+                        onDeleteResponses: (responses) =>
+                            _deleteDoctorResponses(question, responses),
+                      ),
+                    ),
                   ),
-                ),
-              ),
           ],
         ),
       ),
@@ -3320,9 +3523,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       const SizedBox(height: 8),
                       Text(
                         'MedicoHub We Connect',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
                       ),
                     ],
                   ),
@@ -3361,9 +3565,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ),
                 ActionChip(
                   avatar: const Icon(Icons.bolt_rounded, size: 18),
-                  label: Text('${
-                    _roleScopedQuestions.where((item) => item.status == 'open').length
-                  } open threads'),
+                  label: Text(
+                      '${_roleScopedQuestions.where((item) => item.status == 'open').length} open threads'),
                   onPressed: () => setState(() => _tabIndex = 2),
                 ),
                 ActionChip(
@@ -3449,7 +3652,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       label: Text(item.label),
                       style: FilledButton.styleFrom(
                         alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
                       ),
                     );
                   },
@@ -3477,7 +3681,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               children: [
                 Chip(
                   label: Text(label),
-                  backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.secondaryContainer,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -3527,7 +3732,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               ),
               child: Icon(
                 Icons.chat_rounded,
-                color: activated ? Colors.green : Theme.of(context).colorScheme.error,
+                color: activated
+                    ? Colors.green
+                    : Theme.of(context).colorScheme.error,
               ),
             ),
             const SizedBox(width: 14),
@@ -3715,8 +3922,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedTemplateId,
-                  decoration:
-                      const InputDecoration(labelText: 'Title example'),
+                  decoration: const InputDecoration(labelText: 'Title example'),
                   items: [
                     const DropdownMenuItem<String>(
                       value: '_custom',
@@ -3809,8 +4015,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       ? false
                       : _roleScopedQuestions
                               .firstWhere(
-                                (question) =>
-                                    question.id == _editingQuestionId,
+                                (question) => question.id == _editingQuestionId,
                                 orElse: () => const ForumQuestion(
                                   id: '',
                                   title: '',
@@ -3858,8 +4063,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   children: [
                     FilledButton(
                       onPressed: _submitting ? null : _submitQuestion,
-                      child:
-                          Text(_submitting ? 'Saving...' : _editingQuestionId == null ? 'Submit Question' : 'Save Changes'),
+                      child: Text(_submitting
+                          ? 'Saving...'
+                          : _editingQuestionId == null
+                              ? 'Submit Question'
+                              : 'Save Changes'),
                     ),
                     if (_editingQuestionId != null)
                       OutlinedButton(
@@ -3879,7 +4087,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Widget _buildQuestionsTab(BuildContext context) {
     final user = _activeUser!;
     final myQuestions = _filteredQuestionsForScope(_QuestionFeedScope.mine);
-    final publicQuestions = _filteredQuestionsForScope(_QuestionFeedScope.public);
+    final publicQuestions =
+        _filteredQuestionsForScope(_QuestionFeedScope.public);
     if (user.isDoctor) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -3889,8 +4098,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           _buildQuestionListSection(
             context,
             title: 'Current',
-            questions: _doctorCurrentQuestions.where(_questionMatchesDateFilter).where((question) {
-              if (_questionFilterTopic == null || _questionFilterTopic!.isEmpty) {
+            questions: _doctorCurrentQuestions
+                .where(_questionMatchesDateFilter)
+                .where((question) {
+              if (_questionFilterTopic == null ||
+                  _questionFilterTopic!.isEmpty) {
                 return true;
               }
               return question.headingGroup == _questionFilterTopic;
@@ -3899,9 +4111,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           const SizedBox(height: 16),
           _buildQuestionHistorySections(
             context,
-            title: user.isAdmin
-                ? 'Admin History & Moderation'
-                : 'Doctor History',
+            title:
+                user.isAdmin ? 'Admin History & Moderation' : 'Doctor History',
             questions: _doctorHistoryQuestions,
           ),
         ],
@@ -3948,7 +4159,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     required List<ForumQuestion> questions,
   }) {
     final filtered = _questionsMatchingActiveFilters(questions);
-    final latest = filtered.isEmpty ? <ForumQuestion>[] : <ForumQuestion>[filtered.first];
+    final latest =
+        filtered.isEmpty ? <ForumQuestion>[] : <ForumQuestion>[filtered.first];
     final latestId = latest.isEmpty ? null : latest.first.id;
     final oneMonthAgo = DateTime.now().subtract(const Duration(days: 30));
     final lastMonth = filtered
@@ -3957,7 +4169,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             !_latestConversationMoment(question).isBefore(oneMonthAgo))
         .toList();
     final older = filtered
-        .where((question) => _latestConversationMoment(question).isBefore(oneMonthAgo))
+        .where((question) =>
+            _latestConversationMoment(question).isBefore(oneMonthAgo))
         .toList();
     return Column(
       children: [
@@ -4017,66 +4230,66 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         ),
         childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         children: [
-            DropdownButtonFormField<_QuestionDateFilter>(
-              initialValue: _questionDateFilter,
-              decoration: const InputDecoration(labelText: 'Date range'),
-              items: _QuestionDateFilter.values
-                  .map(
-                    (value) => DropdownMenuItem<_QuestionDateFilter>(
-                      value: value,
-                      child: Text(value.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) async {
-                if (value == null) {
-                  return;
-                }
-                if (value == _QuestionDateFilter.customRange) {
-                  final picked = await showDateRangePicker(
-                    context: context,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                    initialDateRange: _customQuestionRange,
-                  );
-                  if (picked == null) {
-                    return;
-                  }
-                  setState(() {
-                    _customQuestionRange = picked;
-                    _questionDateFilter = value;
-                  });
+          DropdownButtonFormField<_QuestionDateFilter>(
+            initialValue: _questionDateFilter,
+            decoration: const InputDecoration(labelText: 'Date range'),
+            items: _QuestionDateFilter.values
+                .map(
+                  (value) => DropdownMenuItem<_QuestionDateFilter>(
+                    value: value,
+                    child: Text(value.label),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) async {
+              if (value == null) {
+                return;
+              }
+              if (value == _QuestionDateFilter.customRange) {
+                final picked = await showDateRangePicker(
+                  context: context,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                  initialDateRange: _customQuestionRange,
+                );
+                if (picked == null) {
                   return;
                 }
                 setState(() {
+                  _customQuestionRange = picked;
                   _questionDateFilter = value;
                 });
-              },
-            ),
-            if (_questionDateFilter == _QuestionDateFilter.customRange) ...[
-              const SizedBox(height: 8),
-              Text(rangeLabel),
+                return;
+              }
+              setState(() {
+                _questionDateFilter = value;
+              });
+            },
+          ),
+          if (_questionDateFilter == _QuestionDateFilter.customRange) ...[
+            const SizedBox(height: 8),
+            Text(rangeLabel),
+          ],
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            initialValue: _questionFilterTopic,
+            decoration: const InputDecoration(labelText: 'Topic filter'),
+            items: <DropdownMenuItem<String?>>[
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('All topics'),
+              ),
+              ..._availableQuestionTopics.map(
+                (topic) => DropdownMenuItem<String?>(
+                  value: topic,
+                  child: Text(topic),
+                ),
+              ),
             ],
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String?>(
-              initialValue: _questionFilterTopic,
-              decoration: const InputDecoration(labelText: 'Topic filter'),
-              items: <DropdownMenuItem<String?>>[
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('All topics'),
-                ),
-                ..._availableQuestionTopics.map(
-                  (topic) => DropdownMenuItem<String?>(
-                    value: topic,
-                    child: Text(topic),
-                  ),
-                ),
-              ],
-              onChanged: (value) {
-                setState(() => _questionFilterTopic = value);
-              },
-            ),
+            onChanged: (value) {
+              setState(() => _questionFilterTopic = value);
+            },
+          ),
         ],
       ),
     );
@@ -4134,7 +4347,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             Text(article.title,
                                 style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 8),
-                            Text('By ${article.authorName} • ${article.language}'),
+                            Text(
+                                'By ${article.authorName} • ${article.language}'),
                             const SizedBox(height: 12),
                             Text(article.summary),
                             const SizedBox(height: 12),
@@ -4153,8 +4367,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                                   label: Text('${article.likeCount} likes'),
                                 ),
                                 Chip(
-                                  avatar: const Icon(Icons.chat_bubble_outline_rounded),
-                                  label: Text('${article.comments.where((item) => item.moderationState == 'visible').length} comments'),
+                                  avatar: const Icon(
+                                      Icons.chat_bubble_outline_rounded),
+                                  label: Text(
+                                      '${article.comments.where((item) => item.moderationState == 'visible').length} comments'),
                                 ),
                                 if (article.sourceUrl.isNotEmpty)
                                   const Chip(label: Text('Source linked')),
@@ -4182,7 +4398,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           ),
           const SizedBox(height: 8),
         ],
-        Text('Education Library', style: Theme.of(context).textTheme.titleLarge),
+        Text('Education Library',
+            style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         ..._education.expand(
           (item) {
@@ -4213,7 +4430,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           const SizedBox(height: 8),
                           Text(item.summary),
                           const SizedBox(height: 12),
-                          Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                          Text(
+                              '${item.type} • ${item.durationMinutes} min • ${item.language}'),
                           if (item.url.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(
@@ -4262,7 +4480,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             Row(
               children: [
                 Expanded(
-                  child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+                  child: Text(title,
+                      style: Theme.of(context).textTheme.titleLarge),
                 ),
                 Chip(label: Text('${questions.length}')),
               ],
@@ -4363,6 +4582,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             message,
             style: TextStyle(color: colors.onErrorContainer),
           ),
+          if (kDebugMode &&
+              (message.contains('Firebase sign-in failed') ||
+                  message.contains('Firebase auth'))) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Technical details were written to the console. The app now keeps the login screen readable for users.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onErrorContainer,
+                  ),
+            ),
+          ],
         ],
       ),
     );
@@ -4387,7 +4617,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     child: Icon(Icons.person_outline_rounded),
                   ),
                   title: Text(user.displayName),
-                  subtitle: Text('${user.email}\n${user.role} • ${user.languages.join(', ')}'),
+                  subtitle: Text(
+                      '${user.email}\n${user.role} • ${user.languages.join(', ')}'),
                   isThreeLine: true,
                 ),
                 if (user.phoneNumber != null && user.phoneNumber!.isNotEmpty)
@@ -4441,7 +4672,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               onPressed: _emailVerificationBusy
                                   ? null
                                   : () => unawaited(
-                                        _sendEmailVerificationLink(manual: true),
+                                        _sendEmailVerificationLink(
+                                            manual: true),
                                       ),
                               child: Text(
                                 _emailVerificationBusy
@@ -4492,7 +4724,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     }
                   },
                 ),
-                if (widget.themeConfig.preset == MedicoHubThemePreset.custom) ...[
+                if (widget.themeConfig.preset ==
+                    MedicoHubThemePreset.custom) ...[
                   const SizedBox(height: 12),
                   TextField(
                     controller: _themeHexController,
@@ -4544,8 +4777,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             children: [
                               Text(
                                 'Current accent',
-                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                      color: _customThemeDarkMode ? Colors.white70 : null,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelLarge
+                                    ?.copyWith(
+                                      color: _customThemeDarkMode
+                                          ? Colors.white70
+                                          : null,
                                     ),
                               ),
                               const SizedBox(height: 2),
@@ -4553,8 +4791,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                                 _themeHexController.text.isEmpty
                                     ? widget.themeConfig.customSeedHex
                                     : _themeHexController.text,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      color: _customThemeDarkMode ? Colors.white : null,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      color: _customThemeDarkMode
+                                          ? Colors.white
+                                          : null,
                                     ),
                               ),
                             ],
@@ -4741,7 +4984,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
@@ -4812,9 +5056,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     children: [
                       Text(
                         'Account deletion',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onErrorContainer,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
+                                ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -4825,12 +5072,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
-                        onPressed: _deleteAccountBusy ? null : _openDeleteAccountDialog,
+                        onPressed: _deleteAccountBusy
+                            ? null
+                            : _openDeleteAccountDialog,
                         icon: _deleteAccountBusy
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.delete_forever_outlined),
                         label: const Text('Delete Account'),
@@ -4870,7 +5120,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ),
                   trailing: Chip(
                     label: Text(
-                      _whatsAppNotifications.any((item) => item.status == 'sent')
+                      _whatsAppNotifications
+                              .any((item) => item.status == 'sent')
                           ? 'Active'
                           : 'Configured',
                     ),
@@ -5010,9 +5261,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: _appSettingsBusy
-                        ? null
-                        : () => _saveAppSettings(),
+                    onPressed:
+                        _appSettingsBusy ? null : () => _saveAppSettings(),
                     child: const Text('Save Notice Settings'),
                   ),
                 ],
@@ -5043,8 +5293,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   const SizedBox(height: 12),
                   TextField(
                     controller: _adTitleController,
-                    decoration:
-                        const InputDecoration(labelText: 'Ad headline'),
+                    decoration: const InputDecoration(labelText: 'Ad headline'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -5056,8 +5305,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   const SizedBox(height: 12),
                   TextField(
                     controller: _adUrlController,
-                    decoration:
-                        const InputDecoration(labelText: 'Target URL'),
+                    decoration: const InputDecoration(labelText: 'Target URL'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -5085,8 +5333,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedAdPlacement,
-                    decoration:
-                        const InputDecoration(labelText: 'Placement'),
+                    decoration: const InputDecoration(labelText: 'Placement'),
                     items: _adPlacements
                         .map(
                           (placement) => DropdownMenuItem<String>(
@@ -5146,30 +5393,31 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ),
                     const SizedBox(height: 12),
                     ..._adCampaigns.take(8).map(
-                      (campaign) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(campaign.title),
-                        subtitle: Text(
-                          '${campaign.sponsorName} • ${campaign.placements.join(', ')} • priority ${campaign.priority}',
-                        ),
-                        trailing: Wrap(
-                          spacing: 8,
-                          children: [
-                            Chip(
-                              label: Text(
-                                campaign.active ? 'Active' : 'Paused',
-                              ),
+                          (campaign) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(campaign.title),
+                            subtitle: Text(
+                              '${campaign.sponsorName} • ${campaign.placements.join(', ')} • priority ${campaign.priority}',
                             ),
-                            TextButton(
-                              onPressed: () => _toggleAdCampaignActive(campaign),
-                              child: Text(
-                                campaign.active ? 'Pause' : 'Resume',
-                              ),
+                            trailing: Wrap(
+                              spacing: 8,
+                              children: [
+                                Chip(
+                                  label: Text(
+                                    campaign.active ? 'Active' : 'Paused',
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _toggleAdCampaignActive(campaign),
+                                  child: Text(
+                                    campaign.active ? 'Pause' : 'Resume',
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
                   ],
                 ],
               ),
@@ -5193,8 +5441,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   const SizedBox(height: 16),
                   TextField(
                     controller: _doctorInviteNameController,
-                    decoration:
-                        const InputDecoration(labelText: 'Doctor name'),
+                    decoration: const InputDecoration(labelText: 'Doctor name'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -5294,8 +5541,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: _adminBusy ? null : _createAdminTitleTemplate,
-                    child:
-                        Text(_adminBusy ? 'Saving...' : 'Add Title Example'),
+                    child: Text(_adminBusy ? 'Saving...' : 'Add Title Example'),
                   ),
                 ],
               ),
@@ -5343,24 +5589,25 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ],
                   const SizedBox(height: 12),
                   ..._whatsAppNotifications.take(8).map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.chat_bubble_outline),
-                        title: Text('WhatsApp • ${item.subject}'),
-                        subtitle: Text(
-                          '${item.recipientName} • ${item.eventType} • ${_notificationStatusLabel(item)} • ${_formatTimestamp(item.createdAt)}',
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.chat_bubble_outline),
+                            title: Text('WhatsApp • ${item.subject}'),
+                            subtitle: Text(
+                              '${item.recipientName} • ${item.eventType} • ${_notificationStatusLabel(item)} • ${_formatTimestamp(item.createdAt)}',
+                            ),
+                            trailing: item.deepLink == null
+                                ? null
+                                : TextButton(
+                                    onPressed: () =>
+                                        _openNotificationLink(item.deepLink!),
+                                    child: const Text('Open Chat'),
+                                  ),
+                          ),
                         ),
-                        trailing: item.deepLink == null
-                            ? null
-                            : TextButton(
-                                onPressed: () => _openNotificationLink(item.deepLink!),
-                                child: const Text('Open Chat'),
-                              ),
                       ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -5378,8 +5625,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Voice Input',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text('Voice Input', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
               Platform.isAndroid
@@ -5390,8 +5636,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               const SizedBox(height: 12),
               Text(
                 _voiceStatus!,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary),
+                style: TextStyle(color: Theme.of(context).colorScheme.primary),
               ),
             ],
             if (_audioAttachmentPath != null) ...[
@@ -5404,8 +5649,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed:
-                      _recordingAudio ? _stopAudioRecording : _startAudioRecording,
+                  onPressed: _recordingAudio
+                      ? _stopAudioRecording
+                      : _startAudioRecording,
                   icon: Icon(_recordingAudio
                       ? Icons.stop_circle_outlined
                       : Icons.mic_none_outlined),
@@ -5427,8 +5673,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   label: const Text('Delete / Redo'),
                 ),
                 OutlinedButton.icon(
-                  onPressed:
-                      _listeningNative ? _stopNativeListening : _startNativeListening,
+                  onPressed: _listeningNative
+                      ? _stopNativeListening
+                      : _startNativeListening,
                   icon: Icon(_listeningNative
                       ? Icons.hearing_disabled_outlined
                       : Icons.hearing_outlined),
@@ -5442,8 +5689,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   label: const Text('Keyboard Mic Help'),
                 ),
                 OutlinedButton.icon(
-                  onPressed:
-                      hasAudio && !_uploadingAttachment ? _uploadRecordedAudio : null,
+                  onPressed: hasAudio && !_uploadingAttachment
+                      ? _uploadRecordedAudio
+                      : null,
                   icon: const Icon(Icons.cloud_upload_outlined),
                   label: const Text('Upload Audio Note'),
                 ),
@@ -5472,8 +5720,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             FilledButton.icon(
               onPressed: _uploadingAttachment ? null : _pickAndUploadReport,
               icon: const Icon(Icons.attach_file_outlined),
-              label:
-                  Text(_uploadingAttachment ? 'Uploading...' : 'Add Report File'),
+              label: Text(
+                  _uploadingAttachment ? 'Uploading...' : 'Add Report File'),
             ),
             const SizedBox(height: 12),
             if (_uploadedAttachments.isEmpty)
@@ -5504,9 +5752,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Future<void> _signInWithFirebase() async {
     var email = _formattedSignInDestination;
     if (!_isSignInUsingEmail) {
-      if (_selectedDialCode.isEmpty || _signInIdentifierController.text.trim().isEmpty) {
+      if (_selectedDialCode.isEmpty ||
+          _signInIdentifierController.text.trim().isEmpty) {
         setState(() {
-          _errorMessage = 'Choose a country code and enter your mobile number to continue.';
+          _errorMessage =
+              'Choose a country code and enter your mobile number to continue.';
         });
         return;
       }
@@ -5547,9 +5797,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
-        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
-        _selectedLanguage =
-            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _emailVerified =
+            firebaseUser.verified || _auth.currentUserEmailVerified;
+        _selectedLanguage = profile.languages.isEmpty
+            ? _selectedLanguage
+            : profile.languages.first;
         _authBusy = false;
         _emailController.text = email;
         _hydratePhoneFields(profile);
@@ -5576,7 +5828,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _authBusy = false;
-        _errorMessage = 'Firebase sign-in failed: ${_firebaseFriendlyError(error)}';
+        _errorMessage =
+            'Firebase sign-in failed: ${_firebaseFriendlyError(error)}';
       });
     }
   }
@@ -5598,9 +5851,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
-        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
-        _selectedLanguage =
-            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _emailVerified =
+            firebaseUser.verified || _auth.currentUserEmailVerified;
+        _selectedLanguage = profile.languages.isEmpty
+            ? _selectedLanguage
+            : profile.languages.first;
         _authBusy = false;
         _emailController.text = profile.email;
         _selectedSignInChannel = 'Email';
@@ -5675,10 +5930,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
-        _emailVerified = firebaseProfile.verified || _auth.currentUserEmailVerified;
+        _emailVerified =
+            firebaseProfile.verified || _auth.currentUserEmailVerified;
         _biometricBusy = false;
-        _selectedLanguage =
-            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _selectedLanguage = profile.languages.isEmpty
+            ? _selectedLanguage
+            : profile.languages.first;
         _emailController.text = profile.email;
         _selectedSignInChannel = 'Email';
         _signInIdentifierController.text = profile.email;
@@ -5786,6 +6043,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (user == null || user.email.isEmpty || _emailVerificationBusy) {
       return;
     }
+    if (!_auth.hasCurrentFirebaseUser) {
+      setState(() {
+        _voiceStatus =
+            'Email verification is available after native Firebase sign-in. You can continue using the app now.';
+      });
+      return;
+    }
     setState(() {
       _emailVerificationBusy = true;
       _errorMessage = null;
@@ -5814,11 +6078,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _promptEmailVerificationIfNeeded(String email) async {
+    if (!_auth.hasCurrentFirebaseUser) {
+      return;
+    }
     await _refreshEmailVerificationState();
     if (_emailVerified) {
       return;
     }
-    final prompted = _prefs?.getBool(_emailVerificationPromptKey(email)) ?? false;
+    final prompted =
+        _prefs?.getBool(_emailVerificationPromptKey(email)) ?? false;
     if (!prompted) {
       await _sendEmailVerificationLink();
       return;
@@ -5873,7 +6141,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
-        _emailVerified = firebaseUser.verified || _auth.currentUserEmailVerified;
+        _emailVerified =
+            firebaseUser.verified || _auth.currentUserEmailVerified;
         _authBusy = false;
         _selectedSignInChannel = 'Email';
         _syncSignInIdentifierWithSelection();
@@ -5931,8 +6200,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
     final matchingDoctor = _doctors.where((doctor) {
       return _normalizeEmail(doctor.email) == email ||
-          (phone.isNotEmpty &&
-              _normalizePhone(doctor.phoneNumber) == phone);
+          (phone.isNotEmpty && _normalizePhone(doctor.phoneNumber) == phone);
     }).toList();
 
     if (_selectedAccountRole == 'doctor' && matchingDoctor.isEmpty) {
@@ -6122,7 +6390,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       if (!_isSignInUsingEmail) {
         throw Exception('Mobile OTP sign-in is currently disabled.');
       }
-      final destination = _otpRequestedDestination ?? _formattedSignInDestination;
+      final destination =
+          _otpRequestedDestination ?? _formattedSignInDestination;
       final profile = await _api.verifyOtp(
         destination: destination,
         channel: 'email',
@@ -6133,8 +6402,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _activeUser = profile;
-        _selectedLanguage =
-            profile.languages.isEmpty ? _selectedLanguage : profile.languages.first;
+        _selectedLanguage = profile.languages.isEmpty
+            ? _selectedLanguage
+            : profile.languages.first;
         _emailController.text = profile.email;
         _hydratePhoneFields(profile);
         _authBusy = false;
@@ -6154,20 +6424,30 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
-  Future<UserProfile> _loadOrCreateBackendProfile(UserProfile firebaseUser) async {
+  Future<UserProfile> _loadOrCreateBackendProfile(
+      UserProfile firebaseUser) async {
     final existing = await _api.fetchUserProfile(firebaseUser.id);
     if (existing != null) {
       return existing;
     }
     final rosterMatch = await _resolveRosterMatch(firebaseUser.email);
-    if (rosterMatch == null) {
-      throw Exception(
-        'This email is not yet part of the MedicoHub roster. Use Create Account for a new patient account, or ask an admin to add the doctor/admin first.',
-      );
-    }
-    if (_normalizeEmail(rosterMatch.email) != _normalizeEmail(firebaseUser.email)) {
+    if (rosterMatch != null &&
+        _normalizeEmail(rosterMatch.email) !=
+            _normalizeEmail(firebaseUser.email)) {
       throw Exception(
         'The signed-in Firebase email does not match the MedicoHub roster lookup result. Please sign out and try again.',
+      );
+    }
+    if (rosterMatch == null) {
+      return _api.upsertUserProfile(
+        id: firebaseUser.id,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName.isEmpty
+            ? firebaseUser.email
+            : firebaseUser.displayName,
+        role: 'patient',
+        languages: [_selectedLanguage],
+        specialties: const [],
       );
     }
     return _api.upsertUserProfile(
@@ -6194,7 +6474,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
     final rosterMatch = await _resolveRosterMatch(firebaseUser.email);
     if (rosterMatch != null &&
-        _normalizeEmail(rosterMatch.email) == _normalizeEmail(firebaseUser.email)) {
+        _normalizeEmail(rosterMatch.email) ==
+            _normalizeEmail(firebaseUser.email)) {
       return _api.upsertUserProfile(
         id: firebaseUser.id,
         email: firebaseUser.email,
@@ -6320,7 +6601,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   maxLines: 12,
                   decoration: const InputDecoration(
                     labelText: 'Article body',
-                    helperText: 'Use the formatting buttons below, emojis, or device speech-to-text.',
+                    helperText:
+                        'Use the formatting buttons below, emojis, or device speech-to-text.',
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -6346,7 +6628,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     ActionChip(
                       avatar: const Icon(Icons.link_rounded),
                       label: const Text('Link'),
-                      onPressed: () => _insertArticleMarkup('[link text](', ')'),
+                      onPressed: () =>
+                          _insertArticleMarkup('[link text](', ')'),
                     ),
                     ActionChip(
                       avatar: const Icon(Icons.mood_rounded),
@@ -6396,7 +6679,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'YouTube video URL',
-                    helperText: 'Paste a watch, shorts, embed, youtu.be URL, or video ID.',
+                    helperText:
+                        'Paste a watch, shorts, embed, youtu.be URL, or video ID.',
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -6442,21 +6726,23 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 if (_blogArticles.isEmpty)
                   const Text('No doctor articles have been published yet.')
                 else
-                  ..._blogArticles.take(8).map(
-                        (article) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.article_outlined),
-                          title: Text(article.title),
-                          subtitle:
-                              Text('${article.category} • ${article.authorName}'),
-                          onTap: () => _showBlogArticleSheet(article),
-                          trailing: IconButton(
-                            tooltip: 'Edit article',
-                            onPressed: () => _startEditArticle(article),
-                            icon: const Icon(Icons.edit_rounded),
-                          ),
-                        ),
-                      ),
+                  ..._blogArticles.map(
+                    (article) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.article_outlined),
+                      title: Text(article.title),
+                      subtitle:
+                          Text('${article.category} • ${article.authorName}'),
+                      onTap: () => _showBlogArticleSheet(article),
+                      trailing: _canEditArticle(article)
+                          ? IconButton(
+                              tooltip: 'Edit article',
+                              onPressed: () => _startEditArticle(article),
+                              icon: const Icon(Icons.edit_rounded),
+                            )
+                          : null,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -6516,7 +6802,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return false;
   }
 
-  bool _canModerateThreadMessage(ForumQuestion question, ThreadMessage message) {
+  bool _canModerateThreadMessage(
+      ForumQuestion question, ThreadMessage message) {
     final user = _activeUser;
     if (user == null) {
       return false;
@@ -6526,12 +6813,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   bool _canDeleteDoctorResponses(ForumQuestion question) {
     final user = _activeUser;
-    return user?.isAdmin == true || user?.isDoctor == true || user?.canModerateContent == true;
+    return user?.isAdmin == true ||
+        user?.isDoctor == true ||
+        user?.canModerateContent == true;
   }
 
   bool _isAssignedToActiveDoctor(ForumQuestion question, UserProfile user) {
     return question.targetDoctorId == user.id ||
-        _normalizeEmail(question.targetDoctorEmail) == _normalizeEmail(user.email);
+        _normalizeEmail(question.targetDoctorEmail) ==
+            _normalizeEmail(user.email);
   }
 
   bool _isAuthoredByActiveUser(ForumQuestion question, UserProfile user) {
@@ -6551,8 +6841,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final timestamps = <DateTime>[
       _tryParseDate(question.updatedAt),
       _tryParseDate(question.createdAt),
-      ...question.threadMessages.map((message) => _tryParseDate(message.createdAt)),
-      ...question.responses.map((response) => _tryParseDate(response.createdAt)),
+      ...question.threadMessages
+          .map((message) => _tryParseDate(message.createdAt)),
+      ...question.responses
+          .map((response) => _tryParseDate(response.createdAt)),
     ]..sort();
     return timestamps.isEmpty
         ? DateTime.fromMillisecondsSinceEpoch(0)
@@ -6730,7 +7022,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     if (applied != true) {
       return;
     }
-    final hex = '#${selected.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+    final hex =
+        '#${selected.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
     _themeHexController.text = hex;
     _applyThemeSelection(
       preset: MedicoHubThemePreset.custom,
@@ -6835,8 +7128,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       setState(() {
         _appSettings = updated;
         _selectedQuestionCategory = _availableQuestionTopics.contains(
-              _selectedQuestionCategory,
-            )
+          _selectedQuestionCategory,
+        )
             ? _selectedQuestionCategory
             : _availableQuestionTopics.first;
         _voiceStatus = 'App settings updated.';
@@ -6869,12 +7162,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _removeQuestionTopic(String topic) async {
-    final nextTopics = _availableQuestionTopics
-        .where((item) => item != topic)
-        .toList();
+    final nextTopics =
+        _availableQuestionTopics.where((item) => item != topic).toList();
     await _saveAppSettings(
-      questionTopics:
-          nextTopics.isEmpty ? List<String>.from(_questionCategories) : nextTopics,
+      questionTopics: nextTopics.isEmpty
+          ? List<String>.from(_questionCategories)
+          : nextTopics,
     );
   }
 
@@ -6897,17 +7190,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         return false;
       }
       if (campaign.languages.isNotEmpty &&
-          !campaign.languages.any((item) => item.toLowerCase() == languageLower)) {
+          !campaign.languages
+              .any((item) => item.toLowerCase() == languageLower)) {
         return false;
       }
       if (campaign.categories.isNotEmpty &&
-          !campaign.categories.any((item) => item.toLowerCase() == categoryLower)) {
+          !campaign.categories
+              .any((item) => item.toLowerCase() == categoryLower)) {
         return false;
       }
       if (campaign.keywords.isEmpty) {
         return true;
       }
-      return campaign.keywords.any((keyword) => haystack.contains(keyword.toLowerCase()));
+      return campaign.keywords
+          .any((keyword) => haystack.contains(keyword.toLowerCase()));
     }).toList()
       ..sort((a, b) => b.priority.compareTo(a.priority));
     return campaigns;
@@ -7034,13 +7330,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       TextField(
                         controller: keyPointsController,
                         maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Key points'),
+                        decoration:
+                            const InputDecoration(labelText: 'Key points'),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: meaningController,
                         maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'What it means'),
+                        decoration:
+                            const InputDecoration(labelText: 'What it means'),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -7054,7 +7352,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       TextField(
                         controller: fullTextController,
                         maxLines: 5,
-                        decoration: const InputDecoration(labelText: 'Full educational reply'),
+                        decoration: const InputDecoration(
+                            labelText: 'Full educational reply'),
                       ),
                     ],
                   ),
@@ -7062,7 +7361,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
@@ -7082,7 +7383,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               doctorId: _activeUser!.id,
                               keyPoints: keyPointsController.text.trim(),
                               whatItMeans: meaningController.text.trim(),
-                              whatToDiscussWithDoctor: discussController.text.trim(),
+                              whatToDiscussWithDoctor:
+                                  discussController.text.trim(),
                               fullText: fullTextController.text.trim(),
                             );
                             if (!mounted) {
@@ -7103,7 +7405,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                                   tags: item.tags,
                                   premium: item.premium,
                                   status: 'answered',
-                                  aiSummary: 'Question about ${item.title}. Latest reply highlights: ${response.keyPoints}',
+                                  aiSummary:
+                                      'Question about ${item.title}. Latest reply highlights: ${response.keyPoints}',
                                   responseCount: item.responseCount + 1,
                                   authorId: item.authorId,
                                   targetDoctorId: item.targetDoctorId,
@@ -7119,7 +7422,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                                   isPublic: item.isPublic,
                                 );
                               }).toList();
-                              _voiceStatus = 'Doctor response posted successfully.';
+                              _voiceStatus =
+                                  'Doctor response posted successfully.';
                             });
                             await _refreshNotifications(_activeUser!.id);
                             if (dialogContext.mounted) {
@@ -7130,7 +7434,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               return;
                             }
                             setState(() {
-                              _voiceStatus = 'Could not post doctor response: $error';
+                              _voiceStatus =
+                                  'Could not post doctor response: $error';
                             });
                             setDialogState(() => submitting = false);
                           }
@@ -7174,13 +7479,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   maxLines: 6,
                   decoration: const InputDecoration(
                     labelText: 'Message',
-                    helperText: 'This will be added to the question thread and may reopen it for doctor attention.',
+                    helperText:
+                        'This will be added to the question thread and may reopen it for doctor attention.',
                   ),
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
@@ -7222,7 +7530,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                                   authorId: item.authorId,
                                   targetDoctorId: item.targetDoctorId,
                                   responses: item.responses,
-                                  threadMessages: [...item.threadMessages, message],
+                                  threadMessages: [
+                                    ...item.threadMessages,
+                                    message
+                                  ],
                                   createdAt: item.createdAt,
                                   updatedAt: message.createdAt,
                                   authorName: item.authorName,
@@ -7246,7 +7557,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               return;
                             }
                             setState(() {
-                              _voiceStatus = 'Could not add thread message: $error';
+                              _voiceStatus =
+                                  'Could not add thread message: $error';
                             });
                             setDialogState(() => submitting = false);
                           }
@@ -7390,7 +7702,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
       setState(() {
-        _errorMessage = 'Enter a valid email before requesting a password reset.';
+        _errorMessage =
+            'Enter a valid email before requesting a password reset.';
       });
       return;
     }
@@ -7414,7 +7727,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _authBusy = false;
-        _errorMessage = 'Could not request password reset: ${_firebaseFriendlyError(error)}';
+        _errorMessage =
+            'Could not request password reset: ${_firebaseFriendlyError(error)}';
       });
     }
   }
@@ -7622,7 +7936,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             setDialogState(() => dialogBusy = false);
                           }
                         },
-                  child: Text(dialogBusy ? 'Deleting...' : 'Delete Permanently'),
+                  child:
+                      Text(dialogBusy ? 'Deleting...' : 'Delete Permanently'),
                 ),
               ],
             );
@@ -7680,7 +7995,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final settings = _notificationSettings;
     if (settings == null) {
       setState(() {
-        _errorMessage = 'WhatsApp activation is still loading. Please try again in a moment.';
+        _errorMessage =
+            'WhatsApp activation is still loading. Please try again in a moment.';
       });
       return;
     }
@@ -7789,13 +8105,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final key = _whatsAppActivationPreferenceKey;
     if (settings == null || prefs == null || key == null) {
       setState(() {
-        _errorMessage = 'WhatsApp activation is not ready yet. Please refresh the app.';
+        _errorMessage =
+            'WhatsApp activation is not ready yet. Please refresh the app.';
       });
       return;
     }
     if (!settings.whatsAppActivationEnabled) {
       setState(() {
-        _errorMessage = 'WhatsApp activation is currently disabled by the administrator.';
+        _errorMessage =
+            'WhatsApp activation is currently disabled by the administrator.';
       });
       return;
     }
@@ -7928,7 +8246,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             targetDoctorId: item.targetDoctorId,
             responses: item.responses,
             threadMessages: item.threadMessages
-                .map((existing) => existing.id == message.id ? moderated : existing)
+                .map((existing) =>
+                    existing.id == message.id ? moderated : existing)
                 .toList(),
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
@@ -8091,8 +8410,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         }
         setState(() {
           _questions = _questions
-              .map((question) =>
-                  question.id == updated.id ? updated : question)
+              .map((question) => question.id == updated.id ? updated : question)
               .toList();
           _voiceStatus = 'Question updated successfully.';
         });
@@ -8418,8 +8736,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         result.partialTranscript!.isNotEmpty) {
       _bodyController.value = TextEditingValue(
         text: result.partialTranscript!,
-        selection: TextSelection.collapsed(
-            offset: result.partialTranscript!.length),
+        selection:
+            TextSelection.collapsed(offset: result.partialTranscript!.length),
       );
     }
     setState(() {
@@ -8533,8 +8851,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         return;
       }
       setState(() {
-        _uploadedAttachments =
-            _uploadedAttachments.where((item) => item.id != attachment.id).toList();
+        _uploadedAttachments = _uploadedAttachments
+            .where((item) => item.id != attachment.id)
+            .toList();
         _voiceStatus = 'Removed ${attachment.fileName}.';
       });
     } catch (error) {
@@ -8622,10 +8941,25 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   String _firebaseFriendlyError(Object error) {
+    if (error is FirebaseAuthDiagnosticException) {
+      final details = error.details.toUpperCase();
+      if (details.contains('INVALID_LOGIN_CREDENTIALS') ||
+          details.contains('INVALID_PASSWORD') ||
+          details.contains('EMAIL_NOT_FOUND')) {
+        return 'Email or password is not correct for this account. Please re-enter the password or use Reset Password.';
+      }
+      if (details.contains('USER_DISABLED')) {
+        return 'This Firebase account is disabled. Please contact support.';
+      }
+      if (error.operation == 'signInWithEmailRestFallback') {
+        return 'Email sign-in could not be completed. Please try again or use Reset Password.';
+      }
+      return error.summary;
+    }
     final text = error.toString();
     if (text.contains('Firebase auth error: unknown-error') ||
         text.contains('firebase_auth/unknown-error')) {
-      return '$text\n\nThe Firebase project is already responding correctly to direct email/password API calls, so this points to the Windows Firebase runtime/plugin layer. Please copy the full message above from the app UI or terminal so we can pinpoint the native failure.';
+      return 'Email sign-in could not be completed by the Windows Firebase layer. Please try again, or use mobile/email password sign-in on Android or iOS. The technical details are saved in the console for debugging.';
     }
     return text;
   }
@@ -8643,10 +8977,14 @@ DateTime _questionLatestMoment(ForumQuestion question) {
   final timestamps = <DateTime>[
     _safeQuestionDate(question.updatedAt),
     _safeQuestionDate(question.createdAt),
-    ...question.threadMessages.map((message) => _safeQuestionDate(message.createdAt)),
-    ...question.responses.map((response) => _safeQuestionDate(response.createdAt)),
+    ...question.threadMessages
+        .map((message) => _safeQuestionDate(message.createdAt)),
+    ...question.responses
+        .map((response) => _safeQuestionDate(response.createdAt)),
   ]..sort();
-  return timestamps.isEmpty ? DateTime.fromMillisecondsSinceEpoch(0) : timestamps.last;
+  return timestamps.isEmpty
+      ? DateTime.fromMillisecondsSinceEpoch(0)
+      : timestamps.last;
 }
 
 String _formatQuestionTimestamp(String? raw) {
@@ -8735,7 +9073,8 @@ class _QuestionCard extends StatelessWidget {
       child: ExpansionTile(
         tilePadding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
         childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        title: Text(question.title, style: Theme.of(context).textTheme.titleMedium),
+        title: Text(question.title,
+            style: Theme.of(context).textTheme.titleMedium),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Column(
@@ -8752,7 +9091,8 @@ class _QuestionCard extends StatelessWidget {
                       'Updated ${_formatQuestionTimestamp(latestMoment.toIso8601String())}',
                     ),
                   ),
-                  if (hiddenMessageCount > 0) Chip(label: Text('$hiddenMessageCount hidden')),
+                  if (hiddenMessageCount > 0)
+                    Chip(label: Text('$hiddenMessageCount hidden')),
                   if (question.premium) const Chip(label: Text('Paid')),
                 ],
               ),
@@ -8781,7 +9121,8 @@ class _QuestionCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: question.tags.map((tag) => Chip(label: Text(tag))).toList(),
+              children:
+                  question.tags.map((tag) => Chip(label: Text(tag))).toList(),
             ),
           ],
           if (question.aiSummary.trim().isNotEmpty) ...[
@@ -8793,7 +9134,8 @@ class _QuestionCard extends StatelessWidget {
           ],
           if (visibleThreadMessages.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Conversation', style: Theme.of(context).textTheme.titleMedium),
+            Text('Conversation',
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             ...visibleThreadMessages.map((message) => _ThreadMessageTile(
                   message: message,
@@ -8916,7 +9258,8 @@ String _compactQuestionPreview(ForumQuestion question) {
   ];
   return parts
       .map((part) => part.replaceAll(RegExp(r'\s+'), ' ').trim())
-      .firstWhere((part) => part.isNotEmpty, orElse: () => 'Tap to open this thread.');
+      .firstWhere((part) => part.isNotEmpty,
+          orElse: () => 'Tap to open this thread.');
 }
 
 class _ThreadMessageTile extends StatelessWidget {
@@ -8983,7 +9326,9 @@ class _ThreadMessageTile extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              Chip(label: Text(message.messageMode == 'voice' ? 'Voice note' : 'Text')),
+              Chip(
+                  label: Text(
+                      message.messageMode == 'voice' ? 'Voice note' : 'Text')),
               if (message.attachmentIds.isNotEmpty)
                 Chip(
                   label: Text(
@@ -9050,14 +9395,17 @@ class _DoctorResponseTile extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: response.labels.map((label) => Chip(label: Text(label))).toList(),
+            children: response.labels
+                .map((label) => Chip(label: Text(label)))
+                .toList(),
           ),
           const SizedBox(height: 8),
           Text('Key points: ${response.keyPoints}'),
           const SizedBox(height: 6),
           Text('What it means: ${response.whatItMeans}'),
           const SizedBox(height: 6),
-          Text('What to discuss with your doctor: ${response.whatToDiscussWithDoctor}'),
+          Text(
+              'What to discuss with your doctor: ${response.whatToDiscussWithDoctor}'),
           const SizedBox(height: 6),
           Text(response.fullText),
         ],
