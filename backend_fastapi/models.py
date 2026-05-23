@@ -302,6 +302,42 @@ class BlogArticleCreate(BaseModel):
     body: str
     category: str = "General Health"
     language: str = "English"
+    source_url: str | None = None
+    image_url: str | None = None
+    youtube_url: str | None = None
+    body_format: Literal["plain", "markdown"] = "markdown"
+
+
+class BlogArticleUpdate(BaseModel):
+    actor_id: str
+    title: str | None = None
+    summary: str | None = None
+    body: str | None = None
+    category: str | None = None
+    language: str | None = None
+    source_url: str | None = None
+    image_url: str | None = None
+    youtube_url: str | None = None
+    body_format: Literal["plain", "markdown"] | None = None
+
+
+class BlogArticleCommentCreate(BaseModel):
+    actor_id: str
+    body: str
+    parent_id: str | None = None
+    message_mode: Literal["text", "voice"] = "text"
+
+
+class BlogArticleCommentRecord(BaseModel):
+    id: str = Field(default_factory=lambda: make_id("cmt"))
+    actor_id: str
+    actor_name: str = "MedicoHub user"
+    actor_role: Literal["patient", "doctor", "admin"] = "patient"
+    body: str
+    parent_id: str | None = None
+    message_mode: Literal["text", "voice"] = "text"
+    moderation_state: Literal["visible", "hidden"] = "visible"
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class BlogArticleRecord(BaseModel):
@@ -312,6 +348,12 @@ class BlogArticleRecord(BaseModel):
     body: str
     category: str = "General Health"
     language: str = "English"
+    source_url: str | None = None
+    image_url: str | None = None
+    youtube_url: str | None = None
+    body_format: Literal["plain", "markdown"] = "markdown"
+    like_count: int = 0
+    comments: list[BlogArticleCommentRecord] = Field(default_factory=list)
     status: Literal["published", "draft"] = "published"
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)

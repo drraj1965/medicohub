@@ -446,6 +446,12 @@ class BlogArticle {
     required this.body,
     required this.category,
     required this.language,
+    required this.sourceUrl,
+    required this.imageUrl,
+    required this.youtubeUrl,
+    required this.bodyFormat,
+    required this.likeCount,
+    required this.comments,
     required this.status,
     required this.createdAt,
     required this.updatedAt,
@@ -459,6 +465,12 @@ class BlogArticle {
   final String body;
   final String category;
   final String language;
+  final String sourceUrl;
+  final String imageUrl;
+  final String youtubeUrl;
+  final String bodyFormat;
+  final int likeCount;
+  final List<BlogArticleComment> comments;
   final String status;
   final String createdAt;
   final String updatedAt;
@@ -473,9 +485,55 @@ class BlogArticle {
       body: json['body'] as String? ?? '',
       category: json['category'] as String? ?? 'General Health',
       language: json['language'] as String? ?? 'English',
+      sourceUrl: json['source_url'] as String? ?? '',
+      imageUrl: json['image_url'] as String? ?? '',
+      youtubeUrl: json['youtube_url'] as String? ?? '',
+      bodyFormat: json['body_format'] as String? ?? 'markdown',
+      likeCount: json['like_count'] as int? ?? 0,
+      comments: (json['comments'] as List<dynamic>? ?? const [])
+          .map((item) => BlogArticleComment.fromJson(item as Map<String, dynamic>))
+          .toList(),
       status: json['status'] as String? ?? 'published',
       createdAt: json['created_at'] as String? ?? '',
       updatedAt: json['updated_at'] as String? ?? '',
+    );
+  }
+}
+
+class BlogArticleComment {
+  const BlogArticleComment({
+    required this.id,
+    required this.actorId,
+    required this.actorName,
+    required this.actorRole,
+    required this.body,
+    required this.parentId,
+    required this.messageMode,
+    required this.moderationState,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String actorId;
+  final String actorName;
+  final String actorRole;
+  final String body;
+  final String parentId;
+  final String messageMode;
+  final String moderationState;
+  final String createdAt;
+
+  factory BlogArticleComment.fromJson(Map<String, dynamic> json) {
+    return BlogArticleComment(
+      id: json['id'] as String? ?? '',
+      actorId: json['actor_id'] as String? ?? '',
+      actorName: json['actor_name'] as String? ?? 'MedicoHub user',
+      actorRole: json['actor_role'] as String? ?? 'patient',
+      body: json['body'] as String? ?? '',
+      parentId: json['parent_id'] as String? ?? '',
+      messageMode: json['message_mode'] as String? ?? 'text',
+      moderationState: json['moderation_state'] as String? ?? 'visible',
+      createdAt: json['created_at'] as String? ?? '',
     );
   }
 }

@@ -12,6 +12,8 @@ try:
         AuthRequest,
         AuthResponse,
         BlogArticleCreate,
+        BlogArticleCommentCreate,
+        BlogArticleUpdate,
         DoctorInviteCreate,
         DoctorResponseInput,
         NotificationSettingsUpdate,
@@ -34,6 +36,7 @@ try:
         add_thread_message,
         authenticate,
         create_blog_article,
+        add_blog_article_comment,
         create_attachment,
         delete_question,
         delete_responses,
@@ -56,6 +59,7 @@ try:
         lookup_user_by_email,
         lookup_user_by_phone,
         moderate_thread_message,
+        moderate_blog_article_comment,
         request_otp,
         resolve_report_pdf,
         revoke_attachment,
@@ -63,6 +67,8 @@ try:
         seed_if_needed,
         should_seed_demo_data,
         update_ad_campaign,
+        update_blog_article,
+        like_blog_article,
         update_app_settings,
         update_notification_settings,
         update_question,
@@ -79,6 +85,8 @@ except ImportError:
         AuthRequest,
         AuthResponse,
         BlogArticleCreate,
+        BlogArticleCommentCreate,
+        BlogArticleUpdate,
         DoctorInviteCreate,
         DoctorResponseInput,
         NotificationSettingsUpdate,
@@ -101,6 +109,7 @@ except ImportError:
         add_thread_message,
         authenticate,
         create_blog_article,
+        add_blog_article_comment,
         create_attachment,
         delete_question,
         delete_responses,
@@ -123,6 +132,7 @@ except ImportError:
         lookup_user_by_email,
         lookup_user_by_phone,
         moderate_thread_message,
+        moderate_blog_article_comment,
         request_otp,
         resolve_report_pdf,
         revoke_attachment,
@@ -130,6 +140,8 @@ except ImportError:
         seed_if_needed,
         should_seed_demo_data,
         update_ad_campaign,
+        update_blog_article,
+        like_blog_article,
         update_app_settings,
         update_notification_settings,
         update_question,
@@ -303,6 +315,30 @@ def blog_articles() -> list[dict]:
 @app.post("/blog/articles")
 def publish_blog_article(payload: BlogArticleCreate) -> dict:
     return create_blog_article(payload)
+
+
+@app.patch("/blog/articles/{article_id}")
+def patch_blog_article(article_id: str, payload: BlogArticleUpdate) -> dict:
+    return update_blog_article(article_id, payload)
+
+
+@app.post("/blog/articles/{article_id}/comments")
+def post_blog_article_comment(article_id: str, payload: BlogArticleCommentCreate) -> dict:
+    return add_blog_article_comment(article_id, payload)
+
+
+@app.patch("/blog/articles/{article_id}/comments/{comment_id}")
+def patch_blog_article_comment(
+    article_id: str,
+    comment_id: str,
+    payload: ThreadMessageModerationRequest,
+) -> dict:
+    return moderate_blog_article_comment(article_id, comment_id, payload)
+
+
+@app.post("/blog/articles/{article_id}/likes")
+def post_blog_article_like(article_id: str) -> dict:
+    return like_blog_article(article_id)
 
 
 @app.get("/ad-campaigns")

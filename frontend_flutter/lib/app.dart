@@ -172,6 +172,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final TextEditingController _articleSummaryController =
       TextEditingController();
   final TextEditingController _articleBodyController = TextEditingController();
+  final TextEditingController _articleSourceUrlController =
+      TextEditingController();
+  final TextEditingController _articleImageUrlController =
+      TextEditingController();
+  final TextEditingController _articleYoutubeUrlController =
+      TextEditingController();
   final TextEditingController _notificationPhraseController =
       TextEditingController();
   final TextEditingController _notificationTargetController =
@@ -241,6 +247,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String _inviteDoctorSpecialty = 'General Health';
   String? _editingQuestionId;
   String _articleCategory = 'General Health';
+  String? _editingArticleId;
   String _currentVersion = UpdateService.fallbackVersion;
   UpdateCheckFrequency _updateFrequency = UpdateCheckFrequency.daily;
   _QuestionFeedScope _questionFeedScope = _QuestionFeedScope.mine;
@@ -308,6 +315,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _articleTitleController.dispose();
     _articleSummaryController.dispose();
     _articleBodyController.dispose();
+    _articleSourceUrlController.dispose();
+    _articleImageUrlController.dispose();
+    _articleYoutubeUrlController.dispose();
     _notificationPhraseController.dispose();
     _notificationTargetController.dispose();
     _emailStatusNoteController.dispose();
@@ -1016,6 +1026,120 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _openInAppUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      return;
+    }
+    final launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    if (!launched) {
+      await _openExternalUrl(url);
+    }
+  }
+
+  Future<void> _shareArticle(BlogArticle article) async {
+    final text = [
+      article.title,
+      if (article.summary.isNotEmpty) article.summary,
+      if (article.sourceUrl.isNotEmpty) article.sourceUrl,
+      if (article.youtubeUrl.isNotEmpty) article.youtubeUrl,
+    ].join('\n\n');
+    final uri = Uri(
+      scheme: 'mailto',
+      queryParameters: {
+        'subject': article.title,
+        'body': text,
+      },
+    );
+    await launchUrl(uri);
+  }
+
+  String _readableMarkdown(String value) {
+    return value
+        .replaceAll(RegExp(r'^\s*#{1,6}\s*', multiLine: true), '')
+        .replaceAll('**', '')
+        .replaceAll('__', '')
+        .replaceAll(RegExp(r'\[([^\]]+)\]\(([^)]+)\)'), r'$1 ($2)');
+  }
+
+  bool _canModerateOrOwnArticleComment(BlogArticleComment comment) {
+    final user = _activeUser;
+    if (user == null) {
+      return false;
+    }
+    return user.isDoctor || user.isAdmin || comment.actorId == user.id;
+  }
+
+  Future<void> _likeArticle(String articleId) async {
+    try {
+      final updated = await _api.likeBlogArticle(articleId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _blogArticles = _blogArticles
+            .map((article) => article.id == updated.id ? updated : article)
+            .toList();
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Could not like article: $error');
+      }
+    }
+  }
+
+  Future<void> _addArticleComment(String articleId, String body) async {
+    final user = _activeUser;
+    if (user == null || body.trim().isEmpty) {
+      return;
+    }
+    try {
+      await _api.addBlogArticleComment(
+        articleId: articleId,
+        actorId: user.id,
+        body: body.trim(),
+      );
+      final articles = await _api.fetchBlogArticles();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _blogArticles = articles;
+        _voiceStatus = 'Comment posted.';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Could not post comment: $error');
+      }
+    }
+  }
+
+  Future<void> _hideArticleComment(String articleId, String commentId) async {
+    final user = _activeUser;
+    if (user == null) {
+      return;
+    }
+    try {
+      await _api.moderateBlogArticleComment(
+        articleId: articleId,
+        commentId: commentId,
+        actorId: user.id,
+      );
+      final articles = await _api.fetchBlogArticles();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _blogArticles = articles;
+        _voiceStatus = 'Comment removed.';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Could not remove comment: $error');
+      }
+    }
+  }
+
   Future<void> _ensureBundledBackendForWindows() async {
     if (!Platform.isWindows) {
       return;
@@ -1421,17 +1545,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ? _buildLoginGate(context)
                   : Padding(
                       padding: const EdgeInsets.all(16),
-                      child: IndexedStack(
-                        index: _tabIndex.clamp(0, _maxTabIndex),
-                        children: [
-                          _buildHomeTab(context),
-                          _buildAskTab(context),
-                          _buildQuestionsTab(context),
-                          _buildEducationTab(context),
-                          _buildSettingsTab(context),
-                          if (_canAccessDoctorPublishing)
-                            _buildDoctorPublishingTab(context),
-                        ],
+                      child: RefreshIndicator(
+                        onRefresh: _refreshCurrentPage,
+                        child: IndexedStack(
+                          index: _tabIndex.clamp(0, _maxTabIndex),
+                          children: [
+                            _buildHomeTab(context),
+                            _buildAskTab(context),
+                            _buildQuestionsTab(context),
+                            _buildEducationTab(context),
+                            _buildSettingsTab(context),
+                            if (_canAccessDoctorPublishing)
+                              _buildDoctorPublishingTab(context),
+                          ],
+                        ),
                       ),
                     ),
         ),
@@ -1847,6 +1974,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
                   const SizedBox(height: 16),
                   Text(item.summary),
+                  if (item.url.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => _openExternalUrl(item.url),
+                      icon: Icon(
+                        item.type == 'video'
+                            ? Icons.play_circle_outline_rounded
+                            : Icons.open_in_new_rounded,
+                      ),
+                      label: Text(item.type == 'video'
+                          ? 'Watch full video'
+                          : 'Read full source'),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1857,6 +1998,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _showBlogArticleSheet(BlogArticle article) async {
+    final commentController = TextEditingController();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1869,6 +2011,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Back to app',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
                   Text(
                     article.category.toUpperCase(),
                     style: Theme.of(context).textTheme.labelLarge,
@@ -1882,8 +2039,93 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   Text('By ${article.authorName} • ${article.language}'),
                   const SizedBox(height: 16),
                   Text(article.summary),
+                  if (article.imageUrl.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.network(
+                        article.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const Text('Article image could not be loaded.'),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
-                  Text(article.body),
+                  Text(_readableMarkdown(article.body)),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _likeArticle(article.id),
+                        icon: const Icon(Icons.favorite_border_rounded),
+                        label: Text('Like (${article.likeCount})'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _shareArticle(article),
+                        icon: const Icon(Icons.share_rounded),
+                        label: const Text('Share'),
+                      ),
+                      if (article.sourceUrl.isNotEmpty)
+                        OutlinedButton.icon(
+                          onPressed: () => _openExternalUrl(article.sourceUrl),
+                          icon: const Icon(Icons.article_outlined),
+                          label: const Text('Source'),
+                        ),
+                      if (article.youtubeUrl.isNotEmpty)
+                        FilledButton.icon(
+                          onPressed: () => _openInAppUrl(article.youtubeUrl),
+                          icon: const Icon(Icons.play_circle_outline_rounded),
+                          label: const Text('Play video'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Comments', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: commentController,
+                    textCapitalization: TextCapitalization.sentences,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Add a comment',
+                      helperText: 'Emojis and device speech-to-text are supported by your keyboard.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await _addArticleComment(article.id, commentController.text);
+                        commentController.clear();
+                      },
+                      icon: const Icon(Icons.send_rounded),
+                      label: const Text('Post comment'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final comment in article.comments
+                      .where((item) => item.moderationState == 'visible'))
+                    Card(
+                      child: ListTile(
+                        title: Text(comment.actorName),
+                        subtitle: Text(comment.body),
+                        trailing: _canModerateOrOwnArticleComment(comment)
+                            ? IconButton(
+                                tooltip: 'Delete comment',
+                                onPressed: () => _hideArticleComment(
+                                  article.id,
+                                  comment.id,
+                                ),
+                                icon: const Icon(Icons.delete_outline_rounded),
+                              )
+                            : null,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1891,6 +2133,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         );
       },
     );
+    commentController.dispose();
   }
 
   Widget _buildLoginGate(BuildContext context) {
@@ -3548,9 +3791,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final publicQuestions = _filteredQuestionsForScope(_QuestionFeedScope.public);
     if (user.isDoctor) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          _buildQuestionRefreshCard(context),
-          const SizedBox(height: 16),
           _buildQuestionFilterCard(context),
           const SizedBox(height: 16),
           _buildQuestionListSection(
@@ -3578,9 +3820,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       length: 2,
       initialIndex: _questionFeedScope.index,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          _buildQuestionRefreshCard(context),
-          const SizedBox(height: 16),
           _buildQuestionFilterCard(context),
           const SizedBox(height: 16),
           TabBar(
@@ -3606,52 +3847,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               questions: publicQuestions,
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildQuestionRefreshCard(BuildContext context) {
-    final user = _activeUser;
-    final scopedCount = _roleScopedQuestions.length;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user?.isAdmin == true
-                        ? 'Question control center'
-                        : user?.isDoctor == true
-                            ? 'Doctor question history'
-                            : 'Your question history',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Fetched ${_questions.length} total thread${_questions.length == 1 ? '' : 's'}; $scopedCount match your current access.',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              onPressed:
-                  _questionsRefreshing ? null : () => _refreshQuestions(),
-              icon: _questionsRefreshing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh_rounded),
-              label: Text(_questionsRefreshing ? 'Refreshing' : 'Refresh'),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -3816,6 +4011,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Widget _buildEducationTab(BuildContext context) {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         if (_blogArticles.isNotEmpty) ...[
           Text('Doctor Blog', style: Theme.of(context).textTheme.titleLarge),
@@ -3855,6 +4051,25 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               article.body,
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                Chip(
+                                  avatar: const Icon(Icons.favorite_rounded),
+                                  label: Text('${article.likeCount} likes'),
+                                ),
+                                Chip(
+                                  avatar: const Icon(Icons.chat_bubble_outline_rounded),
+                                  label: Text('${article.comments.where((item) => item.moderationState == 'visible').length} comments'),
+                                ),
+                                if (article.sourceUrl.isNotEmpty)
+                                  const Chip(label: Text('Source linked')),
+                                if (article.youtubeUrl.isNotEmpty)
+                                  const Chip(label: Text('Video')),
+                              ],
                             ),
                           ],
                         ),
@@ -3908,6 +4123,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           Text(item.summary),
                           const SizedBox(height: 12),
                           Text('${item.type} • ${item.durationMinutes} min • ${item.language}'),
+                          if (item.url.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              item.type == 'video'
+                                  ? 'Tap to watch the full video.'
+                                  : 'Tap to read the full source.',
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -5643,6 +5866,38 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _refreshCurrentPage() async {
+    if (_activeUser == null) {
+      return;
+    }
+    if (_tabIndex == 2) {
+      await _refreshQuestions();
+      return;
+    }
+    if (_tabIndex == 3 || (_canAccessDoctorPublishing && _tabIndex == 5)) {
+      final results = await Future.wait([
+        _tryLoad(_api.fetchEducation()),
+        _tryLoad(_api.fetchBlogArticles()),
+      ]);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final education = results[0] as List<EducationItem>?;
+        final articles = results[1] as List<BlogArticle>?;
+        if (education != null) {
+          _education = education;
+        }
+        if (articles != null) {
+          _blogArticles = articles;
+        }
+        _voiceStatus = 'Education content refreshed.';
+      });
+      return;
+    }
+    await _loadInitialRemoteData();
+  }
+
   Future<void> _refreshQuestions({bool showStatus = true}) async {
     if (_questionsRefreshing) {
       return;
@@ -5927,6 +6182,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       );
     }
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         Card(
           child: Padding(
@@ -5969,8 +6225,44 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 TextField(
                   controller: _articleBodyController,
                   textCapitalization: TextCapitalization.sentences,
-                  maxLines: 6,
-                  decoration: const InputDecoration(labelText: 'Article body'),
+                  minLines: 6,
+                  maxLines: 12,
+                  decoration: const InputDecoration(
+                    labelText: 'Article body',
+                    helperText: 'Use the formatting buttons below, emojis, or device speech-to-text.',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ActionChip(
+                      avatar: const Icon(Icons.format_bold_rounded),
+                      label: const Text('Bold'),
+                      onPressed: () => _insertArticleMarkup('**', '**'),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.title_rounded),
+                      label: const Text('Heading'),
+                      onPressed: () => _insertArticleMarkup('### ', ''),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.format_list_bulleted_rounded),
+                      label: const Text('Bullet'),
+                      onPressed: () => _insertArticleMarkup('\n- ', ''),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.link_rounded),
+                      label: const Text('Link'),
+                      onPressed: () => _insertArticleMarkup('[link text](', ')'),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.mood_rounded),
+                      label: const Text('Emoji'),
+                      onPressed: () => _insertArticleMarkup(' 🙂 ', ''),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -5991,11 +6283,53 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     }
                   },
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _articleSourceUrlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Source / full article URL',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _articleImageUrlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Image URL',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _articleYoutubeUrlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'YouTube video URL',
+                  ),
+                ),
                 const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _adminBusy ? null : _publishDoctorArticle,
-                  icon: const Icon(Icons.publish_rounded),
-                  label: Text(_adminBusy ? 'Publishing...' : 'Publish Article'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _adminBusy ? null : _publishDoctorArticle,
+                      icon: Icon(_editingArticleId == null
+                          ? Icons.publish_rounded
+                          : Icons.save_rounded),
+                      label: Text(_adminBusy
+                          ? 'Saving...'
+                          : _editingArticleId == null
+                              ? 'Publish Article'
+                              : 'Save Changes'),
+                    ),
+                    if (_editingArticleId != null)
+                      OutlinedButton.icon(
+                        onPressed: _clearArticleEditor,
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('Cancel edit'),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -6024,6 +6358,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           subtitle:
                               Text('${article.category} • ${article.authorName}'),
                           onTap: () => _showBlogArticleSheet(article),
+                          trailing: IconButton(
+                            tooltip: 'Edit article',
+                            onPressed: () => _startEditArticle(article),
+                            icon: const Icon(Icons.edit_rounded),
+                          ),
                         ),
                       ),
               ],
@@ -6849,24 +7188,44 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _errorMessage = null;
     });
     try {
-      final article = await _api.createBlogArticle(
-        authorId: user.id,
-        title: _articleTitleController.text.trim(),
-        summary: _articleSummaryController.text.trim(),
-        body: _articleBodyController.text.trim(),
-        category: _articleCategory,
-        language: _selectedLanguage,
-      );
+      final wasEditing = _editingArticleId != null;
+      final article = !wasEditing
+          ? await _api.createBlogArticle(
+              authorId: user.id,
+              title: _articleTitleController.text.trim(),
+              summary: _articleSummaryController.text.trim(),
+              body: _articleBodyController.text.trim(),
+              category: _articleCategory,
+              language: _selectedLanguage,
+              sourceUrl: _articleSourceUrlController.text.trim(),
+              imageUrl: _articleImageUrlController.text.trim(),
+              youtubeUrl: _articleYoutubeUrlController.text.trim(),
+            )
+          : await _api.updateBlogArticle(
+              articleId: _editingArticleId!,
+              actorId: user.id,
+              title: _articleTitleController.text.trim(),
+              summary: _articleSummaryController.text.trim(),
+              body: _articleBodyController.text.trim(),
+              category: _articleCategory,
+              language: _selectedLanguage,
+              sourceUrl: _articleSourceUrlController.text.trim(),
+              imageUrl: _articleImageUrlController.text.trim(),
+              youtubeUrl: _articleYoutubeUrlController.text.trim(),
+            );
       if (!mounted) {
         return;
       }
       setState(() {
-        _blogArticles = [article, ..._blogArticles];
+        _blogArticles = [
+          article,
+          ..._blogArticles.where((item) => item.id != article.id),
+        ];
         _adminBusy = false;
-        _articleTitleController.clear();
-        _articleSummaryController.clear();
-        _articleBodyController.clear();
-        _voiceStatus = 'Article published to the Education tab.';
+        _clearArticleEditor();
+        _voiceStatus = !wasEditing
+            ? 'Article published to the Education tab.'
+            : 'Article updated in the Education tab.';
       });
     } catch (error) {
       if (!mounted) {
@@ -6877,6 +7236,50 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         _errorMessage = 'Could not publish article: $error';
       });
     }
+  }
+
+  void _insertArticleMarkup(String before, String after) {
+    final value = _articleBodyController.value;
+    final selection = value.selection;
+    final selected = selection.isValid
+        ? value.text.substring(selection.start, selection.end)
+        : '';
+    final replacement = '$before$selected$after';
+    final nextText = selection.isValid
+        ? value.text.replaceRange(selection.start, selection.end, replacement)
+        : '${value.text}$replacement';
+    final cursor = selection.isValid
+        ? selection.start + replacement.length
+        : nextText.length;
+    _articleBodyController.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: cursor),
+    );
+  }
+
+  void _startEditArticle(BlogArticle article) {
+    setState(() {
+      _editingArticleId = article.id;
+      _articleTitleController.text = article.title;
+      _articleSummaryController.text = article.summary;
+      _articleBodyController.text = article.body;
+      _articleCategory = article.category;
+      _articleSourceUrlController.text = article.sourceUrl;
+      _articleImageUrlController.text = article.imageUrl;
+      _articleYoutubeUrlController.text = article.youtubeUrl;
+      _tabIndex = _maxTabIndex;
+      _voiceStatus = 'Editing ${article.title}.';
+    });
+  }
+
+  void _clearArticleEditor() {
+    _editingArticleId = null;
+    _articleTitleController.clear();
+    _articleSummaryController.clear();
+    _articleBodyController.clear();
+    _articleSourceUrlController.clear();
+    _articleImageUrlController.clear();
+    _articleYoutubeUrlController.clear();
   }
 
   Future<void> _sendPasswordReset() async {

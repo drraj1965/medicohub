@@ -21,7 +21,10 @@ try:
         AttachmentRecord,
         AuditEvent,
         BlogArticleCreate,
+        BlogArticleCommentCreate,
+        BlogArticleCommentRecord,
         BlogArticleRecord,
+        BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -66,7 +69,10 @@ except ImportError:
         AttachmentRecord,
         AuditEvent,
         BlogArticleCreate,
+        BlogArticleCommentCreate,
+        BlogArticleCommentRecord,
         BlogArticleRecord,
+        BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -1527,6 +1533,10 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
         body=payload.body.strip(),
         category=payload.category.strip() or "General Health",
         language=payload.language.strip() or "English",
+        source_url=payload.source_url,
+        image_url=payload.image_url,
+        youtube_url=payload.youtube_url,
+        body_format=payload.body_format,
     ).model_dump(mode="json")
     repository.create_blog_article(article)
     emit_audit("blog_article", article["id"], "created", payload.author_id, article)
@@ -1534,6 +1544,88 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
         **article,
         "author_name": author.get("display_name", "Unknown doctor"),
     }
+
+
+def update_blog_article(article_id: str, payload: BlogArticleUpdate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    current = next((item for item in repository.list_blog_articles() if item.get("id") == article_id), None)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    if actor.get("role") not in {"doctor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only doctors and admins can edit articles.")
+    if actor.get("role") != "admin" and current.get("author_id") != payload.actor_id:
+        raise HTTPException(status_code=403, detail="Only the author or an admin can edit this article.")
+
+    updates = {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in payload.model_dump(exclude={"actor_id"}, exclude_none=True).items()
+    }
+    updates["updated_at"] = utc_now().isoformat()
+    article = repository.update_blog_article(article_id, updates)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    emit_audit("blog_article", article_id, "updated", payload.actor_id, updates)
+    return {
+        **article,
+        "author_name": repository.get_user(article["author_id"]).get("display_name", "Unknown doctor")
+        if repository.get_user(article["author_id"])
+        else "Unknown doctor",
+    }
+
+
+def add_blog_article_comment(article_id: str, payload: BlogArticleCommentCreate) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if not payload.body.strip():
+        raise HTTPException(status_code=400, detail="Comment body is required.")
+    comment = BlogArticleCommentRecord(
+        actor_id=payload.actor_id,
+        actor_name=actor.get("display_name", "MedicoHub user"),
+        actor_role=actor.get("role", "patient"),
+        body=payload.body.strip(),
+        parent_id=payload.parent_id,
+        message_mode=payload.message_mode,
+    ).model_dump(mode="json")
+    created = repository.add_blog_article_comment(article_id, comment)
+    if created is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    emit_audit("blog_article_comment", comment["id"], "created", payload.actor_id, comment)
+    return created
+
+
+def moderate_blog_article_comment(article_id: str, comment_id: str, payload: ThreadMessageModerationRequest) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    article = next((item for item in repository.list_blog_articles() if item.get("id") == article_id), None)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    comment = next((item for item in article.get("comments", []) if item.get("id") == comment_id), None)
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Comment not found.")
+    can_delete_own = comment.get("actor_id") == payload.actor_id
+    can_moderate = actor.get("role") in {"doctor", "admin"} or actor.get("can_moderate_content")
+    if not can_delete_own and not can_moderate:
+        raise HTTPException(status_code=403, detail="You can only delete your own comment.")
+    moderated = repository.moderate_blog_article_comment(
+        article_id,
+        comment_id,
+        payload.moderation_state,
+    )
+    if moderated is None:
+        raise HTTPException(status_code=404, detail="Comment not found.")
+    emit_audit("blog_article_comment", comment_id, "moderated", payload.actor_id, moderated)
+    return moderated
+
+
+def like_blog_article(article_id: str) -> dict:
+    article = repository.like_blog_article(article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    return article
 
 
 def list_notifications(user_id: str | None = None) -> list[dict]:

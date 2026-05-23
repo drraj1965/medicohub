@@ -90,6 +90,23 @@ class Repository(ABC):
     def create_blog_article(self, article: dict[str, Any]) -> dict[str, Any]: ...
 
     @abstractmethod
+    def update_blog_article(self, article_id: str, updates: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def add_blog_article_comment(self, article_id: str, comment: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def moderate_blog_article_comment(
+        self,
+        article_id: str,
+        comment_id: str,
+        moderation_state: str,
+    ) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def like_blog_article(self, article_id: str) -> dict[str, Any] | None: ...
+
+    @abstractmethod
     def list_notifications(self) -> list[dict[str, Any]]: ...
 
     @abstractmethod
@@ -319,6 +336,49 @@ class LocalJsonRepository(Repository):
         db["blog_articles"].append(article)
         save_db(db)
         return article
+
+    def update_blog_article(self, article_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        db = self._db()
+        for article in db["blog_articles"]:
+            if article.get("id") == article_id:
+                article.update(updates)
+                save_db(db)
+                return article
+        return None
+
+    def add_blog_article_comment(self, article_id: str, comment: dict[str, Any]) -> dict[str, Any] | None:
+        db = self._db()
+        for article in db["blog_articles"]:
+            if article.get("id") == article_id:
+                article.setdefault("comments", []).append(comment)
+                save_db(db)
+                return comment
+        return None
+
+    def moderate_blog_article_comment(
+        self,
+        article_id: str,
+        comment_id: str,
+        moderation_state: str,
+    ) -> dict[str, Any] | None:
+        db = self._db()
+        for article in db["blog_articles"]:
+            if article.get("id") == article_id:
+                for comment in article.setdefault("comments", []):
+                    if comment.get("id") == comment_id:
+                        comment["moderation_state"] = moderation_state
+                        save_db(db)
+                        return comment
+        return None
+
+    def like_blog_article(self, article_id: str) -> dict[str, Any] | None:
+        db = self._db()
+        for article in db["blog_articles"]:
+            if article.get("id") == article_id:
+                article["like_count"] = int(article.get("like_count", 0)) + 1
+                save_db(db)
+                return article
+        return None
 
     def list_notifications(self) -> list[dict[str, Any]]:
         return self._db()["notifications"]
@@ -615,6 +675,57 @@ class FirestoreRepository(Repository):
 
     def create_blog_article(self, article: dict[str, Any]) -> dict[str, Any]:
         self._collection("blog_articles").document(article["id"]).set(article)
+        return article
+
+    def update_blog_article(self, article_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        ref = self._collection("blog_articles").document(article_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        current = self._decode(snap.to_dict())
+        current.update(updates)
+        ref.set(current)
+        return current
+
+    def add_blog_article_comment(self, article_id: str, comment: dict[str, Any]) -> dict[str, Any] | None:
+        ref = self._collection("blog_articles").document(article_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        article = self._decode(snap.to_dict())
+        article.setdefault("comments", []).append(comment)
+        article["updated_at"] = utc_now().isoformat()
+        ref.set(article)
+        return comment
+
+    def moderate_blog_article_comment(
+        self,
+        article_id: str,
+        comment_id: str,
+        moderation_state: str,
+    ) -> dict[str, Any] | None:
+        ref = self._collection("blog_articles").document(article_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        article = self._decode(snap.to_dict())
+        for comment in article.setdefault("comments", []):
+            if comment.get("id") == comment_id:
+                comment["moderation_state"] = moderation_state
+                article["updated_at"] = utc_now().isoformat()
+                ref.set(article)
+                return comment
+        return None
+
+    def like_blog_article(self, article_id: str) -> dict[str, Any] | None:
+        ref = self._collection("blog_articles").document(article_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        article = self._decode(snap.to_dict())
+        article["like_count"] = int(article.get("like_count", 0)) + 1
+        article["updated_at"] = utc_now().isoformat()
+        ref.set(article)
         return article
 
     def list_notifications(self) -> list[dict[str, Any]]:

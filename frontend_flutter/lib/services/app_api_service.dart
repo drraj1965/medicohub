@@ -679,6 +679,9 @@ class AppApiService {
     required String body,
     required String category,
     required String language,
+    String sourceUrl = '',
+    String imageUrl = '',
+    String youtubeUrl = '',
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/blog/articles'),
@@ -690,9 +693,99 @@ class AppApiService {
         'body': body,
         'category': category,
         'language': language,
+        'source_url': sourceUrl,
+        'image_url': imageUrl,
+        'youtube_url': youtubeUrl,
+        'body_format': 'markdown',
       }),
     );
     _ensureSuccess(response, 'create blog article');
+    return BlogArticle.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<BlogArticle> updateBlogArticle({
+    required String articleId,
+    required String actorId,
+    required String title,
+    required String summary,
+    required String body,
+    required String category,
+    required String language,
+    String sourceUrl = '',
+    String imageUrl = '',
+    String youtubeUrl = '',
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$_baseUrl/blog/articles/$articleId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'title': title,
+        'summary': summary,
+        'body': body,
+        'category': category,
+        'language': language,
+        'source_url': sourceUrl,
+        'image_url': imageUrl,
+        'youtube_url': youtubeUrl,
+        'body_format': 'markdown',
+      }),
+    );
+    _ensureSuccess(response, 'update blog article');
+    return BlogArticle.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<BlogArticleComment> addBlogArticleComment({
+    required String articleId,
+    required String actorId,
+    required String body,
+    String parentId = '',
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/blog/articles/$articleId/comments'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'body': body,
+        if (parentId.isNotEmpty) 'parent_id': parentId,
+        'message_mode': 'text',
+      }),
+    );
+    _ensureSuccess(response, 'add article comment');
+    return BlogArticleComment.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<BlogArticleComment> moderateBlogArticleComment({
+    required String articleId,
+    required String commentId,
+    required String actorId,
+    String moderationState = 'hidden',
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$_baseUrl/blog/articles/$articleId/comments/$commentId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'moderation_state': moderationState,
+      }),
+    );
+    _ensureSuccess(response, 'moderate article comment');
+    return BlogArticleComment.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<BlogArticle> likeBlogArticle(String articleId) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/blog/articles/$articleId/likes'),
+    );
+    _ensureSuccess(response, 'like blog article');
     return BlogArticle.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
