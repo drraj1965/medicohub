@@ -10,8 +10,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import 'models/app_models.dart';
 import 'services/app_api_service.dart';
@@ -21,6 +23,10 @@ import 'services/voice/medicohub_voice_service.dart';
 import 'theme/app_theme.dart';
 
 const List<String> _accountRoles = <String>['patient', 'doctor', 'admin'];
+const bool _youtubeOauthActionsEnabled = bool.fromEnvironment(
+  'YOUTUBE_OAUTH_ACTIONS_ENABLED',
+  defaultValue: false,
+);
 const List<String> _questionCategories = <String>[
   'Related to my condition',
   'Related to my medications',
@@ -1038,20 +1044,60 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _shareArticle(BlogArticle article) async {
+    final videoUrl = article.youtubeUrl.isNotEmpty
+        ? article.youtubeUrl
+        : article.youtubeVideoId.isNotEmpty
+            ? _normalizedYouTubeUrl(article.youtubeVideoId)
+            : '';
     final text = [
       article.title,
       if (article.summary.isNotEmpty) article.summary,
       if (article.sourceUrl.isNotEmpty) article.sourceUrl,
-      if (article.youtubeUrl.isNotEmpty) article.youtubeUrl,
+      if (videoUrl.isNotEmpty) videoUrl,
     ].join('\n\n');
-    final uri = Uri(
-      scheme: 'mailto',
-      queryParameters: {
-        'subject': article.title,
-        'body': text,
-      },
+    await SharePlus.instance.share(
+      ShareParams(
+        subject: article.title,
+        text: text,
+      ),
     );
-    await launchUrl(uri);
+  }
+
+  String _normalizedYouTubeUrl(String videoId) {
+    return 'https://www.youtube.com/watch?v=$videoId';
+  }
+
+  String _extractYouTubeVideoId(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    if (RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(trimmed)) {
+      return trimmed;
+    }
+    final uri = Uri.tryParse(trimmed.contains('://') ? trimmed : 'https://$trimmed');
+    if (uri == null) {
+      return '';
+    }
+    final host = uri.host.toLowerCase().replaceFirst('www.', '');
+    if (host == 'youtu.be') {
+      final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+      return RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id) ? id : '';
+    }
+    if (host == 'youtube.com' ||
+        host == 'm.youtube.com' ||
+        host == 'music.youtube.com') {
+      final watchId = uri.queryParameters['v'];
+      if (watchId != null && RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(watchId)) {
+        return watchId;
+      }
+      if (uri.pathSegments.length >= 2 &&
+          (uri.pathSegments.first == 'shorts' || uri.pathSegments.first == 'embed')) {
+        final id = uri.pathSegments[1];
+        return RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id) ? id : '';
+      }
+    }
+    return '';
   }
 
   String _readableMarkdown(String value) {
@@ -1138,6 +1184,27 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         setState(() => _errorMessage = 'Could not remove comment: $error');
       }
     }
+  }
+
+  Future<void> _showYouTubeCommentConsent(BlogArticle article) async {
+    // Phase 2 scaffold only: keep disabled in production until Google OAuth
+    // verification approves https://www.googleapis.com/auth/youtube.force-ssl.
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('YouTube posting is not live yet'),
+        content: const Text(
+          'When enabled, this will post your comment publicly on YouTube using your Google/YouTube account. '
+          'This feature is waiting for Google OAuth verification and will handle consent, quota, disabled comments, and invalid video errors before release.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _ensureBundledBackendForWindows() async {
@@ -1999,6 +2066,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Future<void> _showBlogArticleSheet(BlogArticle article) async {
     final commentController = TextEditingController();
+    final videoId = article.youtubeVideoId.isNotEmpty
+        ? article.youtubeVideoId
+        : _extractYouTubeVideoId(article.youtubeUrl);
+    final videoUrl = article.youtubeUrl.isNotEmpty
+        ? article.youtubeUrl
+        : videoId.isNotEmpty
+            ? _normalizedYouTubeUrl(videoId)
+            : '';
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2039,6 +2114,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   Text('By ${article.authorName} • ${article.language}'),
                   const SizedBox(height: 16),
                   Text(article.summary),
+                  if (videoId.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _ArticleYouTubePlayer(
+                      videoId: videoId,
+                      onOpenExternally: () => _openInAppUrl(videoUrl),
+                    ),
+                  ],
                   if (article.imageUrl.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     ClipRRect(
@@ -2074,11 +2156,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           icon: const Icon(Icons.article_outlined),
                           label: const Text('Source'),
                         ),
-                      if (article.youtubeUrl.isNotEmpty)
+                      if (videoUrl.isNotEmpty)
                         FilledButton.icon(
-                          onPressed: () => _openInAppUrl(article.youtubeUrl),
+                          onPressed: () => _openInAppUrl(videoUrl),
                           icon: const Icon(Icons.play_circle_outline_rounded),
-                          label: const Text('Play video'),
+                          label: const Text('Open video'),
+                        ),
+                      if (_youtubeOauthActionsEnabled &&
+                          videoId.isNotEmpty)
+                        OutlinedButton.icon(
+                          // Pending Google OAuth verification. This action must not
+                          // be exposed until the YouTube force-ssl scope is approved.
+                          onPressed: () => _showYouTubeCommentConsent(article),
+                          icon: const Icon(Icons.public_rounded),
+                          label: const Text('Post to YouTube'),
                         ),
                     ],
                   ),
@@ -6305,6 +6396,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'YouTube video URL',
+                    helperText: 'Paste a watch, shorts, embed, youtu.be URL, or video ID.',
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -7189,6 +7281,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     });
     try {
       final wasEditing = _editingArticleId != null;
+      final youtubeInput = _articleYoutubeUrlController.text.trim();
+      final youtubeVideoId = _extractYouTubeVideoId(youtubeInput);
+      if (youtubeInput.isNotEmpty && youtubeVideoId.isEmpty) {
+        throw Exception('Enter a valid YouTube video URL.');
+      }
+      final youtubeUrl = youtubeVideoId.isEmpty
+          ? ''
+          : youtubeInput.contains('://') || youtubeInput.contains('youtu')
+              ? youtubeInput
+              : _normalizedYouTubeUrl(youtubeVideoId);
       final article = !wasEditing
           ? await _api.createBlogArticle(
               authorId: user.id,
@@ -7199,7 +7301,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               language: _selectedLanguage,
               sourceUrl: _articleSourceUrlController.text.trim(),
               imageUrl: _articleImageUrlController.text.trim(),
-              youtubeUrl: _articleYoutubeUrlController.text.trim(),
+              youtubeUrl: youtubeUrl,
+              youtubeVideoId: youtubeVideoId,
             )
           : await _api.updateBlogArticle(
               articleId: _editingArticleId!,
@@ -7211,7 +7314,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               language: _selectedLanguage,
               sourceUrl: _articleSourceUrlController.text.trim(),
               imageUrl: _articleImageUrlController.text.trim(),
-              youtubeUrl: _articleYoutubeUrlController.text.trim(),
+              youtubeUrl: youtubeUrl,
+              youtubeVideoId: youtubeVideoId,
             );
       if (!mounted) {
         return;
@@ -8956,6 +9060,76 @@ class _DoctorResponseTile extends StatelessWidget {
           Text('What to discuss with your doctor: ${response.whatToDiscussWithDoctor}'),
           const SizedBox(height: 6),
           Text(response.fullText),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArticleYouTubePlayer extends StatefulWidget {
+  const _ArticleYouTubePlayer({
+    required this.videoId,
+    required this.onOpenExternally,
+  });
+
+  final String videoId;
+  final VoidCallback onOpenExternally;
+
+  @override
+  State<_ArticleYouTubePlayer> createState() => _ArticleYouTubePlayerState();
+}
+
+class _ArticleYouTubePlayerState extends State<_ArticleYouTubePlayer> {
+  late final YoutubePlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = YoutubePlayerController.fromVideoId(
+      videoId: widget.videoId,
+      autoPlay: false,
+      params: const YoutubePlayerParams(
+        showControls: true,
+        showFullscreenButton: true,
+        strictRelatedVideos: true,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          YoutubePlayer(
+            controller: _controller,
+            aspectRatio: 16 / 9,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.smart_display_rounded),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('YouTube video embedded in MedicoHub'),
+                ),
+                TextButton.icon(
+                  onPressed: widget.onOpenExternally,
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('Open'),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

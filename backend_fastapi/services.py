@@ -5,7 +5,7 @@ import smtplib
 from html import escape
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 
 from fastapi import HTTPException, UploadFile
 import requests
@@ -1510,6 +1510,11 @@ def list_blog_articles() -> list[dict]:
     decorated = []
     for article in articles:
         author = users.get(article["author_id"])
+        if article.get("youtube_url") and not article.get("youtube_video_id"):
+            try:
+                _, article["youtube_video_id"] = _normalize_youtube_url(article.get("youtube_url"))
+            except HTTPException:
+                article["youtube_video_id"] = None
         decorated.append(
             {
                 **article,
@@ -1519,6 +1524,37 @@ def list_blog_articles() -> list[dict]:
     return sorted(decorated, key=lambda item: item.get("updated_at", ""), reverse=True)
 
 
+def _normalize_youtube_url(raw_url: str | None, raw_video_id: str | None = None) -> tuple[str | None, str | None]:
+    """Store YouTube videos as original URL plus normalized videoId for safe playback/API use."""
+    candidate = (raw_video_id or "").strip()
+    if candidate and _is_valid_youtube_video_id(candidate):
+        return raw_url.strip() if raw_url else f"https://www.youtube.com/watch?v={candidate}", candidate
+
+    url = (raw_url or "").strip()
+    if not url:
+        return None, None
+
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    host = parsed.netloc.lower().removeprefix("www.")
+    video_id: str | None = None
+    if host in {"youtube.com", "m.youtube.com", "music.youtube.com"}:
+        video_id = parse_qs(parsed.query).get("v", [None])[0]
+        if not video_id and parsed.path.startswith("/shorts/"):
+            video_id = parsed.path.split("/")[2] if len(parsed.path.split("/")) > 2 else None
+        if not video_id and parsed.path.startswith("/embed/"):
+            video_id = parsed.path.split("/")[2] if len(parsed.path.split("/")) > 2 else None
+    elif host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/")[0]
+
+    if not video_id or not _is_valid_youtube_video_id(video_id):
+        raise HTTPException(status_code=400, detail="Enter a valid YouTube video URL.")
+    return url, video_id
+
+
+def _is_valid_youtube_video_id(video_id: str) -> bool:
+    return len(video_id) == 11 and all(ch.isalnum() or ch in {"_", "-"} for ch in video_id)
+
+
 def create_blog_article(payload: BlogArticleCreate) -> dict:
     author = repository.get_user(payload.author_id)
     if author is None:
@@ -1526,6 +1562,7 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
     if author.get("role") not in {"doctor", "admin"}:
         raise HTTPException(status_code=403, detail="Only doctors and admins can publish articles.")
 
+    youtube_url, youtube_video_id = _normalize_youtube_url(payload.youtube_url, payload.youtube_video_id)
     article = BlogArticleRecord(
         author_id=payload.author_id,
         title=payload.title.strip(),
@@ -1535,7 +1572,8 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
         language=payload.language.strip() or "English",
         source_url=payload.source_url,
         image_url=payload.image_url,
-        youtube_url=payload.youtube_url,
+        youtube_url=youtube_url,
+        youtube_video_id=youtube_video_id,
         body_format=payload.body_format,
     ).model_dump(mode="json")
     repository.create_blog_article(article)
@@ -1562,6 +1600,13 @@ def update_blog_article(article_id: str, payload: BlogArticleUpdate) -> dict:
         key: value.strip() if isinstance(value, str) else value
         for key, value in payload.model_dump(exclude={"actor_id"}, exclude_none=True).items()
     }
+    if "youtube_url" in updates or "youtube_video_id" in updates:
+        youtube_url, youtube_video_id = _normalize_youtube_url(
+            updates.get("youtube_url"),
+            updates.get("youtube_video_id"),
+        )
+        updates["youtube_url"] = youtube_url
+        updates["youtube_video_id"] = youtube_video_id
     updates["updated_at"] = utc_now().isoformat()
     article = repository.update_blog_article(article_id, updates)
     if article is None:

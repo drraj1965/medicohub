@@ -682,6 +682,7 @@ class AppApiService {
     String sourceUrl = '',
     String imageUrl = '',
     String youtubeUrl = '',
+    String youtubeVideoId = '',
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/blog/articles'),
@@ -696,6 +697,7 @@ class AppApiService {
         'source_url': sourceUrl,
         'image_url': imageUrl,
         'youtube_url': youtubeUrl,
+        'youtube_video_id': youtubeVideoId,
         'body_format': 'markdown',
       }),
     );
@@ -716,6 +718,7 @@ class AppApiService {
     String sourceUrl = '',
     String imageUrl = '',
     String youtubeUrl = '',
+    String youtubeVideoId = '',
   }) async {
     final response = await _client.patch(
       Uri.parse('$_baseUrl/blog/articles/$articleId'),
@@ -730,6 +733,7 @@ class AppApiService {
         'source_url': sourceUrl,
         'image_url': imageUrl,
         'youtube_url': youtubeUrl,
+        'youtube_video_id': youtubeVideoId,
         'body_format': 'markdown',
       }),
     );

@@ -449,6 +449,7 @@ class BlogArticle {
     required this.sourceUrl,
     required this.imageUrl,
     required this.youtubeUrl,
+    required this.youtubeVideoId,
     required this.bodyFormat,
     required this.likeCount,
     required this.comments,
@@ -468,6 +469,7 @@ class BlogArticle {
   final String sourceUrl;
   final String imageUrl;
   final String youtubeUrl;
+  final String youtubeVideoId;
   final String bodyFormat;
   final int likeCount;
   final List<BlogArticleComment> comments;
@@ -488,6 +490,7 @@ class BlogArticle {
       sourceUrl: json['source_url'] as String? ?? '',
       imageUrl: json['image_url'] as String? ?? '',
       youtubeUrl: json['youtube_url'] as String? ?? '',
+      youtubeVideoId: json['youtube_video_id'] as String? ?? '',
       bodyFormat: json['body_format'] as String? ?? 'markdown',
       likeCount: json['like_count'] as int? ?? 0,
       comments: (json['comments'] as List<dynamic>? ?? const [])

@@ -305,6 +305,7 @@ class BlogArticleCreate(BaseModel):
     source_url: str | None = None
     image_url: str | None = None
     youtube_url: str | None = None
+    youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] = "markdown"
 
 
@@ -318,6 +319,7 @@ class BlogArticleUpdate(BaseModel):
     source_url: str | None = None
     image_url: str | None = None
     youtube_url: str | None = None
+    youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] | None = None
 
 
@@ -351,6 +353,7 @@ class BlogArticleRecord(BaseModel):
     source_url: str | None = None
     image_url: str | None = None
     youtube_url: str | None = None
+    youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] = "markdown"
     like_count: int = 0
     comments: list[BlogArticleCommentRecord] = Field(default_factory=list)
