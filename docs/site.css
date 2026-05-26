@@ -254,6 +254,66 @@ footer {
   color: var(--muted);
 }
 
+.legal-page {
+  max-width: 920px;
+  padding: 38px 0 70px;
+}
+
+.legal-hero,
+.legal-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.07);
+}
+
+.legal-hero {
+  padding: clamp(30px, 5vw, 52px);
+  border-radius: 38px;
+}
+
+.legal-hero h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  letter-spacing: -0.06em;
+}
+
+.legal-hero p,
+.legal-card p,
+.legal-card li {
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--accent-strong);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.legal-card {
+  margin-top: 18px;
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.legal-card h2 {
+  margin: 0 0 12px;
+}
+
+.legal-card ul {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.legal-card a,
+footer a {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
 @media (max-width: 860px) {
   .topbar {
     align-items: flex-start;
