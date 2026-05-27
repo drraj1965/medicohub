@@ -283,6 +283,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   List<UploadedAttachment> _uploadedAttachments = const [];
   List<TitleTemplate> _titleTemplates = const [];
   List<DoctorDirectoryEntry> _doctors = const [];
+  final Set<String> _likingArticleIds = <String>{};
   String? _errorMessage;
   String? _authLookupMessage;
   String? _otpStatusMessage;
@@ -1252,28 +1253,89 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return user.isAdmin || article.authorId == user.id;
   }
 
-  Future<void> _likeArticle(String articleId) async {
+  Future<BlogArticle?> _likeArticle(String articleId) async {
+    final user = _activeUser;
+    if (user == null || _likingArticleIds.contains(articleId)) {
+      return null;
+    }
+    final current = _blogArticles.firstWhere(
+      (article) => article.id == articleId,
+      orElse: () => const BlogArticle(
+        id: '',
+        authorId: '',
+        authorName: '',
+        title: '',
+        summary: '',
+        body: '',
+        category: '',
+        language: '',
+        sourceUrl: '',
+        imageUrl: '',
+        youtubeUrl: '',
+        youtubeVideoId: '',
+        bodyFormat: 'markdown',
+        likeCount: 0,
+        likedBy: [],
+        comments: [],
+        status: 'published',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    );
+    final wasLiked = current.likedByUser(user.id);
+    final optimisticLikedBy = <String>{
+      ...current.likedBy,
+      if (!wasLiked) user.id,
+    }..removeWhere((id) => wasLiked && id == user.id);
+    final optimistic = current.id.isEmpty
+        ? null
+        : current.copyWith(
+            likedBy: optimisticLikedBy.toList(),
+            likeCount: optimisticLikedBy.length,
+          );
     try {
-      final updated = await _api.likeBlogArticle(articleId);
+      if (optimistic != null) {
+        setState(() {
+          _likingArticleIds.add(articleId);
+          _blogArticles = _blogArticles
+              .map((article) => article.id == articleId ? optimistic : article)
+              .toList();
+        });
+      }
+      final updated = await _api.likeBlogArticle(
+        articleId: articleId,
+        actorId: user.id,
+      );
       if (!mounted) {
-        return;
+        return updated;
       }
       setState(() {
+        _likingArticleIds.remove(articleId);
         _blogArticles = _blogArticles
             .map((article) => article.id == updated.id ? updated : article)
             .toList();
       });
+      return updated;
     } catch (error) {
       if (mounted) {
-        setState(() => _errorMessage = 'Could not like article: $error');
+        setState(() {
+          _likingArticleIds.remove(articleId);
+          if (optimistic != null) {
+            _blogArticles = _blogArticles
+                .map((article) => article.id == articleId ? current : article)
+                .toList();
+          }
+          _errorMessage = 'Could not update article like: $error';
+        });
       }
+      return null;
     }
   }
 
-  Future<void> _addArticleComment(String articleId, String body) async {
+  Future<BlogArticle?> _addArticleComment(String articleId, String body) async {
     final user = _activeUser;
     if (user == null || body.trim().isEmpty) {
-      return;
+      return null;
     }
     try {
       await _api.addBlogArticleComment(
@@ -1283,16 +1345,23 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       );
       final articles = await _api.fetchBlogArticles();
       if (!mounted) {
-        return;
+        return null;
       }
       setState(() {
         _blogArticles = articles;
         _voiceStatus = 'Comment posted.';
       });
+      for (final article in articles) {
+        if (article.id == articleId) {
+          return article;
+        }
+      }
+      return null;
     } catch (error) {
       if (mounted) {
         setState(() => _errorMessage = 'Could not post comment: $error');
       }
+      return null;
     }
   }
 
@@ -2211,6 +2280,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Future<void> _showBlogArticleSheet(BlogArticle article) async {
     final commentController = TextEditingController();
+    var sheetArticle = article;
     final videoId = article.youtubeVideoId.isNotEmpty
         ? article.youtubeVideoId
         : _extractYouTubeVideoId(article.youtubeUrl);
@@ -2224,159 +2294,207 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Back to app',
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    article.category.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    article.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text('By ${article.authorName} • ${article.language}'),
-                  const SizedBox(height: 16),
-                  Text(article.summary),
-                  if (videoId.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _ArticleYouTubePlayer(
-                      videoId: videoId,
-                      onOpenExternally: () => _openInAppUrl(videoUrl),
-                    ),
-                  ],
-                  if (article.imageUrl.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        article.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            const Text('Article image could not be loaded.'),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  _buildArticleMarkdown(context, article.body),
-                  const SizedBox(height: 18),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () => _likeArticle(article.id),
-                        icon: const Icon(Icons.favorite_border_rounded),
-                        label: Text('Like (${article.likeCount})'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () => _shareArticle(article),
-                        icon: const Icon(Icons.share_rounded),
-                        label: const Text('Share'),
-                      ),
-                      if (article.sourceUrl.isNotEmpty)
-                        OutlinedButton.icon(
-                          onPressed: () => _openExternalUrl(article.sourceUrl),
-                          icon: const Icon(Icons.article_outlined),
-                          label: const Text('Source'),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+            final activeUserId = _activeUser?.id ?? '';
+            final userLiked = activeUserId.isNotEmpty &&
+                sheetArticle.likedByUser(activeUserId);
+            final likeBusy = _likingArticleIds.contains(sheetArticle.id);
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: SafeArea(
+                child: FractionallySizedBox(
+                  heightFactor: 0.94,
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            IconButton(
+                              tooltip: 'Back to app',
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              tooltip: 'Close',
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
                         ),
-                      if (videoUrl.isNotEmpty)
-                        FilledButton.icon(
-                          onPressed: () => _openInAppUrl(videoUrl),
-                          icon: const Icon(Icons.play_circle_outline_rounded),
-                          label: const Text('Open video'),
+                        Text(
+                          sheetArticle.category.toUpperCase(),
+                          style: Theme.of(context).textTheme.labelLarge,
                         ),
-                      if (_canEditArticle(article))
-                        FilledButton.tonalIcon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            _startEditArticle(article);
-                          },
-                          icon: const Icon(Icons.edit_rounded),
-                          label: const Text('Edit article'),
+                        const SizedBox(height: 8),
+                        Text(
+                          sheetArticle.title,
+                          style: Theme.of(context).textTheme.headlineSmall,
                         ),
-                      if (_youtubeOauthActionsEnabled && videoId.isNotEmpty)
-                        OutlinedButton.icon(
-                          // Pending Google OAuth verification. This action must not
-                          // be exposed until the YouTube force-ssl scope is approved.
-                          onPressed: () => _showYouTubeCommentConsent(article),
-                          icon: const Icon(Icons.public_rounded),
-                          label: const Text('Post to YouTube'),
+                        const SizedBox(height: 8),
+                        Text(
+                            'By ${sheetArticle.authorName} • ${sheetArticle.language}'),
+                        const SizedBox(height: 16),
+                        Text(sheetArticle.summary),
+                        if (videoId.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          _ArticleYouTubePlayer(
+                            videoId: videoId,
+                            onOpenExternally: () => _openInAppUrl(videoUrl),
+                          ),
+                        ],
+                        if (sheetArticle.imageUrl.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.network(
+                              sheetArticle.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Text(
+                                  'Article image could not be loaded.'),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        _buildArticleMarkdown(context, sheetArticle.body),
+                        const SizedBox(height: 18),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: likeBusy
+                                  ? null
+                                  : () async {
+                                      final updated =
+                                          await _likeArticle(sheetArticle.id);
+                                      if (updated != null && context.mounted) {
+                                        setSheetState(
+                                            () => sheetArticle = updated);
+                                      }
+                                    },
+                              icon: Icon(userLiked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded),
+                              label: Text(
+                                userLiked
+                                    ? 'Liked (${sheetArticle.likeCount})'
+                                    : 'Like (${sheetArticle.likeCount})',
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _shareArticle(sheetArticle),
+                              icon: const Icon(Icons.share_rounded),
+                              label: const Text('Share'),
+                            ),
+                            if (sheetArticle.sourceUrl.isNotEmpty)
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _openExternalUrl(sheetArticle.sourceUrl),
+                                icon: const Icon(Icons.article_outlined),
+                                label: const Text('Source'),
+                              ),
+                            if (videoUrl.isNotEmpty)
+                              FilledButton.icon(
+                                onPressed: () => _openInAppUrl(videoUrl),
+                                icon: const Icon(
+                                    Icons.play_circle_outline_rounded),
+                                label: const Text('Open video'),
+                              ),
+                            if (_canEditArticle(sheetArticle))
+                              FilledButton.tonalIcon(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _startEditArticle(sheetArticle);
+                                },
+                                icon: const Icon(Icons.edit_rounded),
+                                label: const Text('Edit article'),
+                              ),
+                            if (_youtubeOauthActionsEnabled &&
+                                videoId.isNotEmpty)
+                              OutlinedButton.icon(
+                                // Pending Google OAuth verification. This action must not
+                                // be exposed until the YouTube force-ssl scope is approved.
+                                onPressed: () =>
+                                    _showYouTubeCommentConsent(sheetArticle),
+                                icon: const Icon(Icons.public_rounded),
+                                label: const Text('Post to YouTube'),
+                              ),
+                          ],
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Comments',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: commentController,
-                    textCapitalization: TextCapitalization.sentences,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Add a comment',
-                      helperText:
-                          'Emojis and device speech-to-text are supported by your keyboard.',
+                        const SizedBox(height: 24),
+                        Text('Comments',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: commentController,
+                          textCapitalization: TextCapitalization.sentences,
+                          scrollPadding: EdgeInsets.only(
+                            bottom: keyboardInset + 180,
+                          ),
+                          minLines: 2,
+                          maxLines: 4,
+                          onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                          decoration: const InputDecoration(
+                            labelText: 'Add a comment',
+                            helperText:
+                                'Emojis and device speech-to-text are supported by your keyboard.',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final updated = await _addArticleComment(
+                                  sheetArticle.id, commentController.text);
+                              if (updated != null && context.mounted) {
+                                setSheetState(() {
+                                  sheetArticle = updated;
+                                  commentController.clear();
+                                });
+                                FocusScope.of(context).unfocus();
+                              }
+                            },
+                            icon: const Icon(Icons.send_rounded),
+                            label: const Text('Post comment'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        for (final comment in sheetArticle.comments
+                            .where((item) => item.moderationState == 'visible'))
+                          Card(
+                            child: ListTile(
+                              title: Text(comment.actorName),
+                              subtitle: Text(comment.body),
+                              trailing: _canModerateOrOwnArticleComment(comment)
+                                  ? IconButton(
+                                      tooltip: 'Delete comment',
+                                      onPressed: () => _hideArticleComment(
+                                        sheetArticle.id,
+                                        comment.id,
+                                      ),
+                                      icon: const Icon(
+                                          Icons.delete_outline_rounded),
+                                    )
+                                  : null,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        await _addArticleComment(
-                            article.id, commentController.text);
-                        commentController.clear();
-                      },
-                      icon: const Icon(Icons.send_rounded),
-                      label: const Text('Post comment'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final comment in article.comments
-                      .where((item) => item.moderationState == 'visible'))
-                    Card(
-                      child: ListTile(
-                        title: Text(comment.actorName),
-                        subtitle: Text(comment.body),
-                        trailing: _canModerateOrOwnArticleComment(comment)
-                            ? IconButton(
-                                tooltip: 'Delete comment',
-                                onPressed: () => _hideArticleComment(
-                                  article.id,
-                                  comment.id,
-                                ),
-                                icon: const Icon(Icons.delete_outline_rounded),
-                              )
-                            : null,
-                      ),
-                    ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

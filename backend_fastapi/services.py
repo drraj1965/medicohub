@@ -24,6 +24,7 @@ try:
         BlogArticleCommentCreate,
         BlogArticleCommentRecord,
         BlogArticleRecord,
+        BlogArticleLikeRequest,
         BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
@@ -72,6 +73,7 @@ except ImportError:
         BlogArticleCommentCreate,
         BlogArticleCommentRecord,
         BlogArticleRecord,
+        BlogArticleLikeRequest,
         BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
@@ -1666,8 +1668,11 @@ def moderate_blog_article_comment(article_id: str, comment_id: str, payload: Thr
     return moderated
 
 
-def like_blog_article(article_id: str) -> dict:
-    article = repository.like_blog_article(article_id)
+def like_blog_article(article_id: str, payload: BlogArticleLikeRequest) -> dict:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    article = repository.like_blog_article(article_id, payload.actor_id)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found.")
     return article

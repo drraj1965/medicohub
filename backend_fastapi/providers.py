@@ -104,7 +104,7 @@ class Repository(ABC):
     ) -> dict[str, Any] | None: ...
 
     @abstractmethod
-    def like_blog_article(self, article_id: str) -> dict[str, Any] | None: ...
+    def like_blog_article(self, article_id: str, actor_id: str) -> dict[str, Any] | None: ...
 
     @abstractmethod
     def list_notifications(self) -> list[dict[str, Any]]: ...
@@ -371,11 +371,17 @@ class LocalJsonRepository(Repository):
                         return comment
         return None
 
-    def like_blog_article(self, article_id: str) -> dict[str, Any] | None:
+    def like_blog_article(self, article_id: str, actor_id: str) -> dict[str, Any] | None:
         db = self._db()
         for article in db["blog_articles"]:
             if article.get("id") == article_id:
-                article["like_count"] = int(article.get("like_count", 0)) + 1
+                liked_by = set(article.get("liked_by") or [])
+                if actor_id in liked_by:
+                    liked_by.remove(actor_id)
+                else:
+                    liked_by.add(actor_id)
+                article["liked_by"] = sorted(liked_by)
+                article["like_count"] = len(liked_by)
                 save_db(db)
                 return article
         return None
@@ -717,13 +723,19 @@ class FirestoreRepository(Repository):
                 return comment
         return None
 
-    def like_blog_article(self, article_id: str) -> dict[str, Any] | None:
+    def like_blog_article(self, article_id: str, actor_id: str) -> dict[str, Any] | None:
         ref = self._collection("blog_articles").document(article_id)
         snap = ref.get()
         if not snap.exists:
             return None
         article = self._decode(snap.to_dict())
-        article["like_count"] = int(article.get("like_count", 0)) + 1
+        liked_by = set(article.get("liked_by") or [])
+        if actor_id in liked_by:
+            liked_by.remove(actor_id)
+        else:
+            liked_by.add(actor_id)
+        article["liked_by"] = sorted(liked_by)
+        article["like_count"] = len(liked_by)
         article["updated_at"] = utc_now().isoformat()
         ref.set(article)
         return article

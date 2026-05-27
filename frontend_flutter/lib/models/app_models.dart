@@ -247,7 +247,8 @@ class ForumQuestion {
 
   factory ForumQuestion.fromJson(Map<String, dynamic> json) {
     final responses = json['responses'] as List<dynamic>? ?? const [];
-    final threadMessages = json['thread_messages'] as List<dynamic>? ?? const [];
+    final threadMessages =
+        json['thread_messages'] as List<dynamic>? ?? const [];
     return ForumQuestion(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
@@ -452,6 +453,7 @@ class BlogArticle {
     required this.youtubeVideoId,
     required this.bodyFormat,
     required this.likeCount,
+    required this.likedBy,
     required this.comments,
     required this.status,
     required this.createdAt,
@@ -472,6 +474,7 @@ class BlogArticle {
   final String youtubeVideoId;
   final String bodyFormat;
   final int likeCount;
+  final List<String> likedBy;
   final List<BlogArticleComment> comments;
   final String status;
   final String createdAt;
@@ -493,12 +496,46 @@ class BlogArticle {
       youtubeVideoId: json['youtube_video_id'] as String? ?? '',
       bodyFormat: json['body_format'] as String? ?? 'markdown',
       likeCount: json['like_count'] as int? ?? 0,
+      likedBy: (json['liked_by'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
       comments: (json['comments'] as List<dynamic>? ?? const [])
-          .map((item) => BlogArticleComment.fromJson(item as Map<String, dynamic>))
+          .map((item) =>
+              BlogArticleComment.fromJson(item as Map<String, dynamic>))
           .toList(),
       status: json['status'] as String? ?? 'published',
       createdAt: json['created_at'] as String? ?? '',
       updatedAt: json['updated_at'] as String? ?? '',
+    );
+  }
+
+  bool likedByUser(String userId) => likedBy.contains(userId);
+
+  BlogArticle copyWith({
+    int? likeCount,
+    List<String>? likedBy,
+    List<BlogArticleComment>? comments,
+  }) {
+    return BlogArticle(
+      id: id,
+      authorId: authorId,
+      authorName: authorName,
+      title: title,
+      summary: summary,
+      body: body,
+      category: category,
+      language: language,
+      sourceUrl: sourceUrl,
+      imageUrl: imageUrl,
+      youtubeUrl: youtubeUrl,
+      youtubeVideoId: youtubeVideoId,
+      bodyFormat: bodyFormat,
+      likeCount: likeCount ?? this.likeCount,
+      likedBy: likedBy ?? this.likedBy,
+      comments: comments ?? this.comments,
+      status: status,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }
@@ -692,9 +729,10 @@ class AdCampaign {
   final String updatedAt;
 
   factory AdCampaign.fromJson(Map<String, dynamic> json) {
-    List<String> stringList(String key) => (json[key] as List<dynamic>? ?? const [])
-        .map((item) => item.toString())
-        .toList();
+    List<String> stringList(String key) =>
+        (json[key] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .toList();
 
     return AdCampaign(
       id: json['id'] as String? ?? '',

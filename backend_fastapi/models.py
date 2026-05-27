@@ -330,6 +330,10 @@ class BlogArticleCommentCreate(BaseModel):
     message_mode: Literal["text", "voice"] = "text"
 
 
+class BlogArticleLikeRequest(BaseModel):
+    actor_id: str
+
+
 class BlogArticleCommentRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("cmt"))
     actor_id: str
@@ -356,6 +360,7 @@ class BlogArticleRecord(BaseModel):
     youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] = "markdown"
     like_count: int = 0
+    liked_by: list[str] = Field(default_factory=list)
     comments: list[BlogArticleCommentRecord] = Field(default_factory=list)
     status: Literal["published", "draft"] = "published"
     created_at: datetime = Field(default_factory=utc_now)

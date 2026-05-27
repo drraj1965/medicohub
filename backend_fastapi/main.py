@@ -13,6 +13,7 @@ try:
         AuthResponse,
         BlogArticleCreate,
         BlogArticleCommentCreate,
+        BlogArticleLikeRequest,
         BlogArticleUpdate,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -86,6 +87,7 @@ except ImportError:
         AuthResponse,
         BlogArticleCreate,
         BlogArticleCommentCreate,
+        BlogArticleLikeRequest,
         BlogArticleUpdate,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -342,8 +344,8 @@ def patch_blog_article_comment(
 
 
 @app.post("/blog/articles/{article_id}/likes")
-def post_blog_article_like(article_id: str) -> dict:
-    return like_blog_article(article_id)
+def post_blog_article_like(article_id: str, payload: BlogArticleLikeRequest) -> dict:
+    return like_blog_article(article_id, payload)
 
 
 @app.get("/ad-campaigns")

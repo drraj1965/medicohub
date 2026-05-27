@@ -14,8 +14,7 @@ class AppApiService {
   static final String _baseUrl = _resolveBaseUrl();
   static const Duration _requestTimeout = Duration(seconds: 20);
   static const Duration _questionRequestTimeout = Duration(seconds: 30);
-  static const String _publicBackendUrl =
-      'https://medicohub-backend.fly.dev';
+  static const String _publicBackendUrl = 'https://medicohub-backend.fly.dev';
 
   String get baseUrl => _baseUrl;
 
@@ -129,16 +128,19 @@ class AppApiService {
     _ensureSuccess(response, 'doctors');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
-        .map((item) => DoctorDirectoryEntry.fromJson(item as Map<String, dynamic>))
+        .map((item) =>
+            DoctorDirectoryEntry.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
   Future<UserProfile> loginAsDemo(String email) async {
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': 'Passw0rd!'}),
-    ).timeout(_requestTimeout);
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'password': 'Passw0rd!'}),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'login');
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return UserProfile.fromJson(data['user'] as Map<String, dynamic>);
@@ -193,18 +195,25 @@ class AppApiService {
       return null;
     }
     _ensureSuccess(response, 'user profile');
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<UserProfile?> lookupUserByEmail(String email) async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/users/lookup/by-email?email=${Uri.encodeQueryComponent(email)}'),
-    ).timeout(_requestTimeout);
-    if (response.statusCode == 404 || response.body.trim().isEmpty || response.body.trim() == 'null') {
+    final response = await _client
+        .get(
+          Uri.parse(
+              '$_baseUrl/users/lookup/by-email?email=${Uri.encodeQueryComponent(email)}'),
+        )
+        .timeout(_requestTimeout);
+    if (response.statusCode == 404 ||
+        response.body.trim().isEmpty ||
+        response.body.trim() == 'null') {
       return null;
     }
     _ensureSuccess(response, 'user lookup');
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<UserProfile?> lookupUserByPhone({
@@ -213,24 +222,28 @@ class AppApiService {
     String? phoneNationalNumber,
   }) async {
     final params = <String, String>{
-      if (phoneNumber != null && phoneNumber.isNotEmpty) 'phone_number': phoneNumber,
+      if (phoneNumber != null && phoneNumber.isNotEmpty)
+        'phone_number': phoneNumber,
       if (phoneCountryCode != null && phoneCountryCode.isNotEmpty)
         'phone_country_code': phoneCountryCode,
       if (phoneNationalNumber != null && phoneNationalNumber.isNotEmpty)
         'phone_national_number': phoneNationalNumber,
     };
-    final response = await _client.get(
-      Uri.parse(
-        '$_baseUrl/users/lookup/by-phone',
-      ).replace(queryParameters: params),
-    ).timeout(_requestTimeout);
+    final response = await _client
+        .get(
+          Uri.parse(
+            '$_baseUrl/users/lookup/by-phone',
+          ).replace(queryParameters: params),
+        )
+        .timeout(_requestTimeout);
     if (response.statusCode == 404 ||
         response.body.trim().isEmpty ||
         response.body.trim() == 'null') {
       return null;
     }
     _ensureSuccess(response, 'user lookup by phone');
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<List<NotificationOutboxItem>> fetchNotifications({
@@ -239,9 +252,11 @@ class AppApiService {
     final suffix = userId == null || userId.isEmpty
         ? ''
         : '?user_id=${Uri.encodeQueryComponent(userId)}';
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/notifications/outbox$suffix'),
-    ).timeout(_requestTimeout);
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/notifications/outbox$suffix'),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'notifications');
     final data = jsonDecode(response.body) as List<dynamic>;
     return data
@@ -251,9 +266,11 @@ class AppApiService {
   }
 
   Future<NotificationSettings> fetchNotificationSettings() async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/notification-settings'),
-    ).timeout(_requestTimeout);
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/notification-settings'),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'notification settings');
     return NotificationSettings.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -261,9 +278,11 @@ class AppApiService {
   }
 
   Future<AppSettings> fetchAppSettings() async {
-    final response = await _client.get(
-      Uri.parse('$_baseUrl/app-settings'),
-    ).timeout(_requestTimeout);
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/app-settings'),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'app settings');
     return AppSettings.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -401,7 +420,8 @@ class AppApiService {
       }),
     );
     _ensureSuccess(response, 'user profile upsert');
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<DoctorDirectoryEntry> inviteDoctor({
@@ -785,9 +805,14 @@ class AppApiService {
     );
   }
 
-  Future<BlogArticle> likeBlogArticle(String articleId) async {
+  Future<BlogArticle> likeBlogArticle({
+    required String articleId,
+    required String actorId,
+  }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/blog/articles/$articleId/likes'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'actor_id': actorId}),
     );
     _ensureSuccess(response, 'like blog article');
     return BlogArticle.fromJson(
@@ -812,7 +837,8 @@ class AppApiService {
           detail = decoded['detail'].toString();
         }
       } catch (_) {}
-      throw Exception('Failed to load $label (${response.statusCode}): $detail');
+      throw Exception(
+          'Failed to load $label (${response.statusCode}): $detail');
     }
   }
 }
