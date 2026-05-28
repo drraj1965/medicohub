@@ -57,6 +57,39 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+if(MSVC AND TARGET flutter_secure_storage_windows_plugin)
+  # Some Build Tools installs expose ATL/MFC headers and libs outside the paths
+  # generated for flutter_secure_storage_windows. Add the available toolchain
+  # paths explicitly so Windows builds do not fail on atlstr.h/atls.lib.
+  file(GLOB _ATL_MFC_INCLUDE_DIRS
+    "$ENV{VCToolsInstallDir}/atlmfc/include"
+    "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/include"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/include"
+    "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/include"
+  )
+  if(_ATL_MFC_INCLUDE_DIRS)
+    list(GET _ATL_MFC_INCLUDE_DIRS 0 _ATL_MFC_INCLUDE_DIR)
+    target_include_directories(flutter_secure_storage_windows_plugin
+      PRIVATE "${_ATL_MFC_INCLUDE_DIR}")
+  endif()
+
+  file(GLOB _ATL_MFC_LIBRARY_DIRS
+    "$ENV{VCToolsInstallDir}/atlmfc/lib/x64"
+    "$ENV{VCToolsInstallDir}/atlmfc/lib/spectre/x64"
+    "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/lib/x64"
+    "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/lib/spectre/x64"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/x64"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/spectre/x64"
+    "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/x64"
+    "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/spectre/x64"
+  )
+  if(_ATL_MFC_LIBRARY_DIRS)
+    list(GET _ATL_MFC_LIBRARY_DIRS 0 _ATL_MFC_LIBRARY_DIR)
+    target_link_directories(flutter_secure_storage_windows_plugin
+      PRIVATE "${_ATL_MFC_LIBRARY_DIR}")
+  endif()
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

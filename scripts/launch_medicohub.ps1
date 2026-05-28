@@ -9,7 +9,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $backendScript = Join-Path $PSScriptRoot "run_backend.ps1"
 $frontendScript = Join-Path $PSScriptRoot "run_frontend.ps1"
 $releaseExe = Join-Path $projectRoot "frontend_flutter\build\windows\x64\runner\Release\medicohub.exe"
-$healthUrl = "http://127.0.0.1:$BackendPort/"
+$debugExe = Join-Path $projectRoot "frontend_flutter\build\windows\x64\runner\Debug\medicohub.exe"
+$healthUrl = "http://127.0.0.1:$BackendPort/docs"
 
 if (-not $SkipBackendStart) {
   Start-Process powershell -ArgumentList @(
@@ -41,6 +42,8 @@ if (-not $ready) {
 
 if (Test-Path $releaseExe) {
   Start-Process $releaseExe -WorkingDirectory (Split-Path $releaseExe)
+} elseif (Test-Path $debugExe) {
+  Start-Process $debugExe -WorkingDirectory (Split-Path $debugExe)
 } else {
   Start-Process powershell -ArgumentList @(
     "-ExecutionPolicy",

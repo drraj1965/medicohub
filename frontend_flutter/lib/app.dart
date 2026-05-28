@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
+import 'features/vestibular/vestibular_home_page.dart';
 import 'models/app_models.dart';
 import 'services/app_api_service.dart';
 import 'services/firebase_auth_service.dart';
@@ -2056,6 +2057,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ),
                   _buildDrawerItem(
                     context,
+                    icon: Icons.balance_rounded,
+                    label: 'Vestibular Exercises',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _openVestibularExercises();
+                    },
+                  ),
+                  _buildDrawerItem(
+                    context,
                     icon: Icons.person_outline_rounded,
                     label: 'Profile & Settings',
                     onTap: () => _selectDrawerTab(context, 4),
@@ -2110,6 +2120,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   void _selectDrawerTab(BuildContext context, int index) {
     Navigator.of(context).pop();
     setState(() => _tabIndex = index);
+  }
+
+  void _openVestibularExercises() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const VestibularExerciseHomePage(),
+      ),
+    );
   }
 
   Future<void> _showLegalSheet({
@@ -3716,6 +3734,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         icon: Icons.auto_stories_outlined,
         label: 'Education',
         onTap: () => setState(() => _tabIndex = 3),
+      ),
+      (
+        icon: Icons.balance_outlined,
+        label: 'Vestibular Exercises',
+        onTap: _openVestibularExercises,
       ),
       (
         icon: Icons.person_outline_rounded,
