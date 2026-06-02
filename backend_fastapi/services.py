@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 import smtplib
 from html import escape
@@ -141,6 +142,7 @@ file_storage = _LazyFileStorage()
 pdf_ingestion = PdfIngestionService()
 settings = get_settings()
 NOTIFICATION_REQUEST_TIMEOUT_SECONDS = 5
+PUBLIC_APP_URL = os.getenv("MEDICOHUB_PUBLIC_APP_URL", "https://mediconverse.web.app/").rstrip("/")
 
 ADMIN_SEED = [
     {
@@ -387,8 +389,22 @@ def _whatsapp_link(*, phone_number: str, body: str) -> str:
     return f"https://wa.me/{digits}?text={quote(body)}"
 
 
+def _app_open_url() -> str:
+    return PUBLIC_APP_URL or "https://mediconverse.web.app"
+
+
+def _append_open_app_footer(body: str) -> str:
+    if "Open the App for the full answer" in body:
+        return body
+    return (
+        f"{body.rstrip()}\n\n"
+        f"Open the App for the full answer:\n{_app_open_url()}"
+    )
+
+
 def _queue_firebase_trigger_email(*, to_email: str, subject: str, body: str) -> bool:
     try:
+        escaped_body = escape(body).replace("\n", "<br>")
         repository.create_mail_message(
             {
                 "id": make_id("mail"),
@@ -396,7 +412,7 @@ def _queue_firebase_trigger_email(*, to_email: str, subject: str, body: str) -> 
                 "message": {
                     "subject": subject,
                     "text": body,
-                    "html": f"<pre>{escape(body)}</pre>",
+                    "html": f"<div>{escaped_body}</div>",
                 },
                 "created_at": utc_now().isoformat(),
                 "source": "medicohub-backend",
@@ -1373,6 +1389,7 @@ def add_response(payload: DoctorResponseInput) -> dict:
         f"What it means:\n{payload.what_it_means}\n\n"
         f"What to discuss with your doctor:\n{payload.what_to_discuss_with_doctor}"
     )
+    response_preview = _append_open_app_footer(response_preview)
     if author is not None:
         _queue_notification_pair(
             event_type="question_answered",

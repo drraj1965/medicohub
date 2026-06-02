@@ -255,7 +255,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   String _selectedSpecialty = 'General Health';
   String _selectedSignInChannel = 'Email';
   String? _selectedSignupPhoneChannel;
-  String _selectedTemplateId = '_custom';
   String _selectedQuestionCategory = 'General';
   String? _questionFilterTopic;
   String? _selectedDoctorId;
@@ -1448,13 +1447,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
-  List<TitleTemplate> get _visibleTitleTemplates {
-    return _titleTemplates.where((template) {
-      return template.language == _selectedLanguage ||
-          template.language == 'English';
-    }).toList();
-  }
-
   List<String> get _availableQuestionTopics {
     final topics = _appSettings?.questionTopics ?? _questionCategories;
     return topics.isEmpty ? _questionCategories : topics;
@@ -1929,20 +1921,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       title: Row(
         children: [
           const SizedBox(width: 4),
-          CircleAvatar(
+          _buildBrandLogoImage(
+            context,
+            assetPath: Theme.of(context).brightness == Brightness.dark
+                ? _brandIconDarkAsset
+                : _brandIconLightAsset,
+            height: 36,
+            width: 36,
             radius: 18,
-            backgroundColor: Colors.transparent,
-            child: ClipOval(
-              child: Image.asset(
-                Theme.of(context).brightness == Brightness.dark
-                    ? _brandIconDarkAsset
-                    : _brandIconLightAsset,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-                width: 36,
-                height: 36,
-              ),
-            ),
+            overfill: 1.08,
           ),
           const SizedBox(width: 12),
           Column(
@@ -2007,12 +1994,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Image.asset(
-                    Theme.of(context).brightness == Brightness.dark
+                  _buildBrandLogoImage(
+                    context,
+                    assetPath: Theme.of(context).brightness == Brightness.dark
                         ? _brandDarkAsset
                         : _brandLightAsset,
                     height: 96,
-                    fit: BoxFit.contain,
+                    width: 116,
+                    radius: 16,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -2177,11 +2166,14 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 children: [
                   Row(
                     children: [
-                      Image.asset(
-                        Theme.of(context).brightness == Brightness.dark
+                      _buildBrandLogoImage(
+                        context,
+                        assetPath: Theme.of(context).brightness == Brightness.dark
                             ? _brandDarkAsset
                             : _brandLightAsset,
                         height: 88,
+                        width: 106,
+                        radius: 14,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -2629,6 +2621,41 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     );
   }
 
+  Widget _buildBrandLogoImage(
+    BuildContext context, {
+    required String assetPath,
+    required double height,
+    double? width,
+    double radius = 16,
+    double overfill = 1.04,
+  }) {
+    final canvasColor = assetPath.contains('_dark')
+        ? const Color(0xFF071323)
+        : Theme.of(context).colorScheme.surface;
+    final imageWidth = width ?? height * 1.2;
+
+    return SizedBox(
+      width: imageWidth,
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: canvasColor),
+          child: Transform.scale(
+            scale: overfill,
+            child: Image.asset(
+              assetPath,
+              width: imageWidth,
+              height: height,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAuthBrandPanel(
     BuildContext context, {
     required String assetPath,
@@ -2653,17 +2680,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       child: compact
           ? Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: Image.asset(
-                    Theme.of(context).brightness == Brightness.dark
-                        ? _brandIconDarkAsset
-                        : _brandIconLightAsset,
-                    height: 72,
-                    width: 72,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                  ),
+                _buildBrandLogoImage(
+                  context,
+                  assetPath: Theme.of(context).brightness == Brightness.dark
+                      ? _brandIconDarkAsset
+                      : _brandIconLightAsset,
+                  height: 72,
+                  width: 72,
+                  radius: 18,
+                  overfill: 1.08,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2696,10 +2721,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Center(
-                  child: Image.asset(
-                    assetPath,
+                  child: _buildBrandLogoImage(
+                    context,
+                    assetPath: assetPath,
                     height: 170,
-                    fit: BoxFit.contain,
+                    width: 204,
+                    radius: 14,
+                    overfill: 1.055,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -3921,6 +3949,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Widget _buildAskTab(BuildContext context) {
     final selectedDoctor = _selectedDoctor;
+    final showAdvancedClassification =
+        _isAdminView || _editingQuestionId != null;
     return ListView(
       children: [
         Card(
@@ -3962,8 +3992,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 const SizedBox(height: 12),
                 Text(
                   _isAdminView
-                      ? 'Pick a doctor, choose a broad heading, then use a plain-language title with patient terms like stroke, fits, or Parkinson\'s.'
-                      : 'Choose the doctor and broad topic, then write a simple title using everyday health terms.',
+                      ? 'Pick a doctor, confirm the language, and write the question. The broad heading can be adjusted here for sorting when needed.'
+                      : 'Choose the doctor, confirm the language, and write the question. The title is optional; MedicoHub can create one from your question.',
                 ),
                 const SizedBox(height: 16),
                 if (_doctors.isEmpty)
@@ -4002,25 +4032,27 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   ),
                 ],
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedQuestionCategory,
-                  decoration:
-                      const InputDecoration(labelText: 'General heading'),
-                  items: _availableQuestionTopics
-                      .map(
-                        (category) => DropdownMenuItem<String>(
-                          value: category,
-                          child: Text(category),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedQuestionCategory = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
+                if (showAdvancedClassification) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedQuestionCategory,
+                    decoration:
+                        const InputDecoration(labelText: 'General heading'),
+                    items: _availableQuestionTopics
+                        .map(
+                          (category) => DropdownMenuItem<String>(
+                            value: category,
+                            child: Text(category),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedQuestionCategory = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 DropdownButtonFormField<String>(
                   initialValue: _selectedLanguage,
                   decoration:
@@ -4035,76 +4067,27 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       .toList(),
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() {
-                        _selectedLanguage = value;
-                        _selectedTemplateId = '_custom';
-                      });
+                      setState(() => _selectedLanguage = value);
                     }
                   },
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedSpecialty,
-                  decoration: const InputDecoration(labelText: 'Topic area'),
-                  items: _specialties
-                      .map(
-                        (specialty) => DropdownMenuItem<String>(
-                          value: specialty,
-                          child: Text(specialty),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedSpecialty = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedTemplateId,
-                  decoration: const InputDecoration(labelText: 'Title example'),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: '_custom',
-                      child: Text('Custom title'),
-                    ),
-                    ..._visibleTitleTemplates.map(
-                      (template) => DropdownMenuItem<String>(
-                        value: template.id,
-                        child: Text(template.title),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    setState(() {
-                      _selectedTemplateId = value;
-                      if (value == '_custom') {
-                        return;
-                      }
-                      final template = _visibleTitleTemplates.firstWhere(
-                        (item) => item.id == value,
-                      );
-                      _titleController.text = template.title;
-                      _selectedSpecialty = template.specialty;
-                    });
-                  },
+                Text(
+                  'MedicoHub will use a safe default heading for sorting. Doctors and admins can refine this later if needed.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 12),
                 Tooltip(
                   message:
-                      'Use simple, searchable words like stroke, fits, tremor, Parkinson, migraine, or dizziness so question classification works better later.',
+                      'Optional. If this is left blank, MedicoHub will create a short title from the first words of the question.',
                   child: TextField(
                     controller: _titleController,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
-                      labelText: 'Title',
+                      labelText: 'Title (optional)',
                       helperText: _isAdminView
-                          ? 'Tip: include simple terms such as stroke, fits, Parkinson, tremor, or migraine.'
-                          : 'Use simple condition words when possible.',
+                          ? 'Tip: keep this short and searchable.'
+                          : 'Leave blank if unsure; MedicoHub will create one.',
                     ),
                   ),
                 ),
@@ -4113,8 +4096,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   controller: _bodyController,
                   maxLines: 5,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration:
-                      const InputDecoration(labelText: 'Question details'),
+                  decoration: const InputDecoration(
+                    labelText: 'Question details',
+                    helperText:
+                        'Required. Describe your concern in everyday words.',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _buildVoiceCaptureCard(context),
@@ -4185,17 +4171,19 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       ? 'Change visibility from the My Questions list using the Public/Private action.'
                       : 'You can change visibility later from My Questions.'),
                 ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Chip(label: Text(_selectedQuestionCategory)),
-                    Chip(label: Text(_selectedLanguage)),
-                    Chip(label: Text(_selectedSpecialty)),
-                    if (_premium) const Chip(label: Text('Second opinion')),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                if (_premium || showAdvancedClassification) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (showAdvancedClassification)
+                        Chip(label: Text(_selectedQuestionCategory)),
+                      Chip(label: Text(_selectedLanguage)),
+                      if (_premium) const Chip(label: Text('Second opinion')),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 _buildAttachmentPanel(context),
                 const SizedBox(height: 16),
                 Wrap(
@@ -8486,19 +8474,74 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   String _normalizePhone(String? value) => (value ?? '').trim();
 
+  String _deriveQuestionTitle(String body) {
+    final normalized = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) {
+      return 'Question for doctor';
+    }
+    final words = normalized.split(' ');
+    final title = words.take(10).join(' ');
+    if (title.length <= 84 && words.length <= 10) {
+      return title;
+    }
+    final shortened = title.length > 84 ? title.substring(0, 84).trim() : title;
+    return '$shortened...';
+  }
+
+  String _effectiveQuestionCategory() {
+    final category = _selectedQuestionCategory.trim();
+    return category.isEmpty ? 'General' : category;
+  }
+
+  String _effectiveQuestionLanguage() {
+    final language = _selectedLanguage.trim();
+    return language.isEmpty ? 'English' : language;
+  }
+
+  String _effectiveQuestionSpecialty(String category) {
+    final specialty = _selectedSpecialty.trim();
+    if (specialty.isNotEmpty) {
+      return specialty;
+    }
+    return category == 'General' ? 'General Health' : category;
+  }
+
+  void _showAskFormIssue(String message) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _voiceStatus = message;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _submitQuestion() async {
     final user = _activeUser;
     final doctorId = _selectedDoctorId;
-    if (user == null || doctorId == null) {
+    if (user == null) {
+      _showAskFormIssue('Please sign in before submitting a question.');
       return;
     }
-    if (_titleController.text.trim().isEmpty ||
-        _bodyController.text.trim().isEmpty) {
-      setState(() {
-        _voiceStatus = 'Title and question body are required.';
-      });
+    if (doctorId == null || doctorId.isEmpty) {
+      _showAskFormIssue('Please choose the doctor you want to address.');
       return;
     }
+    final body = _bodyController.text.trim();
+    if (body.isEmpty) {
+      _showAskFormIssue(
+        'Please enter the question details before submitting.',
+      );
+      return;
+    }
+    final headingGroup = _effectiveQuestionCategory();
+    final language = _effectiveQuestionLanguage();
+    final specialty = _effectiveQuestionSpecialty(headingGroup);
+    final title = _titleController.text.trim().isEmpty
+        ? _deriveQuestionTitle(body)
+        : _titleController.text.trim();
 
     setState(() {
       _submitting = true;
@@ -8506,24 +8549,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     });
 
     try {
-      final tags = <String>[
-        _selectedSpecialty,
-        _selectedLanguage,
-        _selectedQuestionCategory,
+      final tags = <String>{
+        specialty,
+        language,
+        headingGroup,
         if (_premium) 'Second opinion' else 'Forum',
-      ];
+      }.where((item) => item.trim().isNotEmpty).toList();
 
       if (_editingQuestionId == null) {
         final created = await _api.submitQuestion(
           authorId: user.id,
           targetDoctorId: doctorId,
-          headingGroup: _selectedQuestionCategory,
-          title: _titleController.text.trim(),
-          body: _bodyController.text.trim(),
+          headingGroup: headingGroup,
+          title: title,
+          body: body,
           symptomsSummary: _symptomsController.text.trim(),
           premium: _premium,
           isPublic: false,
-          language: _selectedLanguage,
+          language: language,
           tags: tags,
           attachmentIds: _uploadedAttachments.map((item) => item.id).toList(),
         );
@@ -8539,10 +8582,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         final updated = await _api.updateQuestion(
           questionId: _editingQuestionId!,
           actorId: user.id,
-          title: _titleController.text.trim(),
-          body: _bodyController.text.trim(),
-          headingGroup: _selectedQuestionCategory,
-          language: _selectedLanguage,
+          title: title,
+          body: body,
+          headingGroup: headingGroup,
+          language: language,
           symptomsSummary: _symptomsController.text.trim(),
           attachmentIds: _uploadedAttachments.map((item) => item.id).toList(),
         );
@@ -8567,10 +8610,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       if (!mounted) {
         return;
       }
+      final message =
+          'Submit failed. Please check the required fields and try again.';
       setState(() {
         _submitting = false;
-        _voiceStatus = 'Submit failed: $error';
+        _voiceStatus = '$message Details: $error';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
   }
 
@@ -8582,7 +8630,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _uploadedAttachments = const [];
     _audioAttachmentPath = null;
     _audioPreviewPlaying = false;
-    _selectedTemplateId = '_custom';
     _selectedQuestionCategory = 'General';
     _editingQuestionId = null;
   }
