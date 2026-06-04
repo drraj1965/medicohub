@@ -6,6 +6,10 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:local_auth/local_auth.dart';
@@ -13,17 +17,66 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import 'features/vestibular/vestibular_home_page.dart';
 import 'models/app_models.dart';
 import 'services/app_api_service.dart';
 import 'services/firebase_auth_service.dart';
+import 'services/translation_service.dart';
 import 'services/update_service.dart';
 import 'services/voice/medicohub_voice_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/translated_text_block.dart';
 
 const List<String> _accountRoles = <String>['patient', 'doctor', 'admin'];
+const Map<String, String> _articleSectionOptions = <String, String>{
+  'summary': 'Summary',
+  'patients': 'For Patients',
+  'doctors': 'For Doctors',
+  'citations': 'Citations / References',
+  'faq': 'FAQ',
+  'key_takeaways': 'Key Takeaways',
+  'disclaimer': 'Disclaimer',
+  'additional_notes': 'Additional Notes',
+};
+
+const Map<String, String> _legacyArticleSectionIdAliases = <String, String>{
+  'body': 'summary',
+  'notes': 'additional_notes',
+  'takeaways': 'key_takeaways',
+  'key-takeaways': 'key_takeaways',
+  'additional-notes': 'additional_notes',
+  'references': 'citations',
+};
+
+T? safeDropdownValue<T>(T? currentValue, List<DropdownMenuItem<T>> items) {
+  final values = items.map((item) => item.value).whereType<T>().toList();
+  if (currentValue == null) {
+    return null;
+  }
+  if (values.where((value) => value == currentValue).length == 1) {
+    return currentValue;
+  }
+  return null;
+}
+
+List<DropdownMenuItem<String>> _languageDropdownItemsExcluding(
+    String sourceLanguageCode) {
+  final seen = <String>{};
+  return medicoHubLanguages
+      .where((language) => language.code != sourceLanguageCode)
+      .where((language) => seen.add(language.code))
+      .map(
+        (language) => DropdownMenuItem<String>(
+          value: language.code,
+          child: Text('${language.nativeLabel} (${language.label})'),
+        ),
+      )
+      .toList();
+}
+
 const bool _youtubeOauthActionsEnabled = bool.fromEnvironment(
   'YOUTUBE_OAUTH_ACTIONS_ENABLED',
   defaultValue: false,
@@ -135,6 +188,12 @@ class _MedicoHubAppState extends State<MedicoHubApp> {
     return MaterialApp(
       title: 'MedicoHub',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [
+        FlutterQuillLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: buildMedicoHubTheme(_themeConfig),
       home: MedicoHubHomePage(
         themeConfig: _themeConfig,
@@ -188,6 +247,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   final TextEditingController _articleSummaryController =
       TextEditingController();
   final TextEditingController _articleBodyController = TextEditingController();
+  final List<_ArticleSectionEditorData> _articleSectionEditors = [];
   final TextEditingController _articleSourceUrlController =
       TextEditingController();
   final TextEditingController _articleImageUrlController =
@@ -285,6 +345,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   List<DoctorDirectoryEntry> _doctors = const [];
   final Set<String> _likingArticleIds = <String>{};
   String? _errorMessage;
+  String? _articlePublishError;
   String? _authLookupMessage;
   String? _otpStatusMessage;
   String? _otpRequestedDestination;
@@ -331,6 +392,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _articleTitleController.dispose();
     _articleSummaryController.dispose();
     _articleBodyController.dispose();
+    for (final section in _articleSectionEditors) {
+      section.dispose();
+    }
     _articleSourceUrlController.dispose();
     _articleImageUrlController.dispose();
     _articleYoutubeUrlController.dispose();
@@ -1057,15 +1121,74 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
-  Future<void> _openInAppUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
+  Future<void> _showVideoPlayerSheet({
+    required String videoId,
+    required String videoUrl,
+    required String title,
+  }) async {
+    if (videoId.isEmpty) {
+      await _openExternalUrl(videoUrl);
       return;
     }
-    final launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-    if (!launched) {
-      await _openExternalUrl(url);
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.9,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Back to previous page',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close video',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        child: _ArticleYouTubePlayer(
+                          videoId: videoId,
+                          onOpenExternally: () => _openExternalUrl(videoUrl),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Use Back or Close above to return to MedicoHub without leaving the app.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _shareArticle(BlogArticle article) async {
@@ -1127,114 +1250,259 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     return '';
   }
 
-  Widget _buildArticleMarkdown(BuildContext context, String value) {
-    final theme = Theme.of(context).textTheme;
+  Widget _buildArticleHtml(BuildContext context, String value) {
+    final html = value.trim().isEmpty ? '<p></p>' : value;
+    return HtmlWidget(
+      html,
+      onTapUrl: (url) async {
+        final uri = Uri.tryParse(url);
+        if (uri == null) {
+          return false;
+        }
+        return launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      textStyle: Theme.of(context).textTheme.bodyMedium,
+    );
+  }
+
+  String _escapeHtml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+  bool _looksLikeHtml(String value) =>
+      RegExp(r'<[a-zA-Z][\s\S]*>').hasMatch(value.trim());
+
+  String _canonicalArticleSectionId(String id) {
+    final normalized = id
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (normalized.isEmpty) {
+      return 'summary';
+    }
+    return _legacyArticleSectionIdAliases[normalized] ?? normalized;
+  }
+
+  String _defaultArticleSectionLabel(String id, String fallback) {
+    final canonical = _canonicalArticleSectionId(id);
+    return _articleSectionOptions[canonical] ??
+        (fallback.trim().isNotEmpty ? fallback.trim() : 'Section');
+  }
+
+  List<_DisplayArticleSection> normalizeArticleForDisplay(BlogArticle article) {
+    final displaySections = <_DisplayArticleSection>[];
+    final seen = <String>{};
+    final orderedIds = <String>[
+      ...article.sectionOrder,
+      ...article.sections.keys
+          .where((id) => !article.sectionOrder.contains(id)),
+    ];
+
+    for (final rawId in orderedIds) {
+      final section = article.sections[rawId];
+      if (section == null) {
+        continue;
+      }
+      var id = _canonicalArticleSectionId(
+          section.id.isNotEmpty ? section.id : rawId);
+      if (seen.contains(id)) {
+        id = '${id}_${seen.length + 1}';
+      }
+      final richHtml = _sectionContentToHtml(
+        richTextHtml: section.richTextHtml,
+        plainText: section.plainText,
+      );
+      final plainText = section.plainText.trim().isNotEmpty
+          ? section.plainText.trim()
+          : _plainTextFromHtmlOrMarkdown(section.richTextHtml);
+      if (richHtml.trim().isEmpty && plainText.trim().isEmpty) {
+        continue;
+      }
+      seen.add(id);
+      displaySections.add(
+        _DisplayArticleSection(
+          id: id,
+          label: _defaultArticleSectionLabel(id, section.label),
+          customTitle: section.customTitle,
+          richTextHtml: richHtml,
+          plainText: plainText,
+          updatedAt: section.updatedAt,
+          isLegacyFallback: false,
+          quillDeltaJson: section.quillDeltaJson,
+        ),
+      );
+    }
+
+    if (displaySections.isNotEmpty) {
+      return displaySections;
+    }
+
+    final legacyContent =
+        article.body.trim().isNotEmpty ? article.body : article.summary;
+    final legacyHtml = _sectionContentToHtml(
+      richTextHtml: article.bodyFormat == 'plain' ? '' : legacyContent,
+      plainText: article.bodyFormat == 'plain' ? legacyContent : '',
+    );
+    final legacyPlain = _plainTextFromHtmlOrMarkdown(legacyContent);
+    if (legacyHtml.trim().isEmpty && legacyPlain.trim().isEmpty) {
+      return const <_DisplayArticleSection>[];
+    }
+    return <_DisplayArticleSection>[
+      _DisplayArticleSection(
+        id: 'summary',
+        label: 'Summary',
+        customTitle: '',
+        richTextHtml: legacyHtml,
+        plainText: legacyPlain,
+        updatedAt: article.updatedAt,
+        isLegacyFallback: true,
+      ),
+    ];
+  }
+
+  String _sectionContentToHtml({
+    required String richTextHtml,
+    required String plainText,
+  }) {
+    final rich = richTextHtml.trim();
+    if (rich.isNotEmpty) {
+      return _looksLikeHtml(rich) ? rich : _markdownishToHtml(rich);
+    }
+    final plain = plainText.trim();
+    if (plain.isEmpty) {
+      return '';
+    }
+    return _plainTextToParagraphHtml(plain);
+  }
+
+  String _markdownishToHtml(String value) {
     final lines = value.replaceAll('\r\n', '\n').split('\n');
-    final children = <Widget>[];
+    final buffer = StringBuffer();
+    var inUl = false;
+    var inOl = false;
+
+    void closeLists() {
+      if (inUl) {
+        buffer.write('</ul>');
+        inUl = false;
+      }
+      if (inOl) {
+        buffer.write('</ol>');
+        inOl = false;
+      }
+    }
+
     for (final rawLine in lines) {
       final line = rawLine.trimRight();
       if (line.trim().isEmpty) {
-        children.add(const SizedBox(height: 10));
+        closeLists();
         continue;
       }
-      final headingMatch = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line);
+      final headingMatch = RegExp(r'^(#{1,3})\s+(.+)$').firstMatch(line.trim());
       if (headingMatch != null) {
+        closeLists();
         final level = headingMatch.group(1)!.length;
-        final text = headingMatch.group(2)!.trim();
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 6),
-            child: Text(
-              _stripInlineMarkdown(text),
-              style: level <= 2
-                  ? theme.titleLarge
-                  : theme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-        );
+        buffer.write(
+            '<h$level>${_inlineMarkdownToHtml(headingMatch.group(2)!)}</h$level>');
         continue;
       }
       final bulletMatch = RegExp(r'^\s*[-*]\s+(.+)$').firstMatch(line);
       if (bulletMatch != null) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 7),
-                  child: Icon(Icons.circle, size: 6),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildInlineMarkdownText(
-                    context,
-                    bulletMatch.group(1)!,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        if (inOl) {
+          buffer.write('</ol>');
+          inOl = false;
+        }
+        if (!inUl) {
+          buffer.write('<ul>');
+          inUl = true;
+        }
+        buffer
+            .write('<li>${_inlineMarkdownToHtml(bulletMatch.group(1)!)}</li>');
         continue;
       }
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _buildInlineMarkdownText(context, line),
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
-    );
-  }
-
-  Widget _buildInlineMarkdownText(BuildContext context, String value) {
-    return RichText(
-      text: TextSpan(
-        style: Theme.of(context).textTheme.bodyMedium,
-        children: _inlineMarkdownSpans(value),
-      ),
-    );
-  }
-
-  List<TextSpan> _inlineMarkdownSpans(String value) {
-    final spans = <TextSpan>[];
-    final pattern = RegExp(r'(\*\*\*|\*\*|__)(.+?)\1');
-    var cursor = 0;
-    for (final match in pattern.allMatches(value)) {
-      if (match.start > cursor) {
-        spans.add(
-          TextSpan(
-              text: _stripLinkMarkup(value.substring(cursor, match.start))),
-        );
+      final numberMatch = RegExp(r'^\s*\d+\.\s+(.+)$').firstMatch(line);
+      if (numberMatch != null) {
+        if (inUl) {
+          buffer.write('</ul>');
+          inUl = false;
+        }
+        if (!inOl) {
+          buffer.write('<ol>');
+          inOl = true;
+        }
+        buffer
+            .write('<li>${_inlineMarkdownToHtml(numberMatch.group(1)!)}</li>');
+        continue;
       }
-      spans.add(
-        TextSpan(
-          text: _stripLinkMarkup(match.group(2)!),
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      );
-      cursor = match.end;
+      closeLists();
+      final quoteMatch = RegExp(r'^\s*>\s+(.+)$').firstMatch(line);
+      if (quoteMatch != null) {
+        buffer.write(
+            '<blockquote>${_inlineMarkdownToHtml(quoteMatch.group(1)!)}</blockquote>');
+      } else {
+        buffer.write('<p>${_inlineMarkdownToHtml(line.trim())}</p>');
+      }
     }
-    if (cursor < value.length) {
-      spans.add(TextSpan(text: _stripLinkMarkup(value.substring(cursor))));
-    }
-    return spans.isEmpty ? [TextSpan(text: _stripLinkMarkup(value))] : spans;
+    closeLists();
+    return buffer.toString();
   }
 
-  String _stripInlineMarkdown(String value) {
-    return _stripLinkMarkup(value.replaceAll('**', '').replaceAll('__', ''));
+  String _plainTextToParagraphHtml(String value) {
+    final paragraphs = value
+        .replaceAll('\r\n', '\n')
+        .split(RegExp(r'\n\s*\n'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return paragraphs
+        .map((part) => '<p>${_escapeHtml(part).replaceAll('\n', '<br>')}</p>')
+        .join();
   }
 
-  String _stripLinkMarkup(String value) {
-    return value.replaceAllMapped(
+  String _inlineMarkdownToHtml(String value) {
+    var html = _escapeHtml(value);
+    html = html.replaceAllMapped(
       RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
-      (match) => '${match.group(1)} (${match.group(2)})',
+      (match) =>
+          '<a href="${_escapeHtml(match.group(2) ?? '')}">${_escapeHtml(match.group(1) ?? '')}</a>',
     );
+    html = html.replaceAllMapped(
+      RegExp(r'\*\*(.+?)\*\*'),
+      (match) => '<strong>${match.group(1)}</strong>',
+    );
+    html = html.replaceAllMapped(
+      RegExp(r'__(.+?)__'),
+      (match) => '<strong>${match.group(1)}</strong>',
+    );
+    html = html.replaceAllMapped(
+      RegExp(r'\*(.+?)\*'),
+      (match) => '<em>${match.group(1)}</em>',
+    );
+    html = html.replaceAllMapped(
+      RegExp(r'_(.+?)_'),
+      (match) => '<em>${match.group(1)}</em>',
+    );
+    html = html.replaceAll('&lt;u&gt;', '<u>').replaceAll('&lt;/u&gt;', '</u>');
+    return html;
+  }
+
+  String _plainTextFromHtmlOrMarkdown(String value) {
+    return value
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'!\[[^\]]*\]\([^)]+\)'), '')
+        .replaceAllMapped(
+          RegExp(r'\[([^\]]+)\]\([^)]+\)'),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'[*_`#>]'), '')
+        .replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*\d+\.\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   bool _canModerateOrOwnArticleComment(BlogArticleComment comment) {
@@ -1274,6 +1542,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         youtubeUrl: '',
         youtubeVideoId: '',
         bodyFormat: 'markdown',
+        defaultLanguage: 'en',
+        sectionOrder: [],
+        sections: {},
         likeCount: 0,
         likedBy: [],
         comments: [],
@@ -1929,7 +2200,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             height: 36,
             width: 36,
             radius: 18,
-            overfill: 1.08,
+            overfill: 1.24,
+            imageAlignment: Alignment.bottomLeft,
+            canvasColor: _brandLogoShellColor(context),
           ),
           const SizedBox(width: 12),
           Column(
@@ -2002,6 +2275,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     height: 96,
                     width: 116,
                     radius: 16,
+                    overfill: 1.24,
+                    imageAlignment: Alignment.bottomLeft,
+                    canvasColor: _brandLogoShellColor(context),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -2066,6 +2342,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       label: 'Doctor Publishing',
                       onTap: () => _selectDrawerTab(context, 5),
                     ),
+                  if (_isAdminView)
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.dataset_linked_outlined,
+                      label: 'Admin Data Console',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _openAdminDataConsole();
+                      },
+                    ),
                   _buildDrawerItem(
                     context,
                     icon: Icons.info_outline_rounded,
@@ -2111,10 +2397,39 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     setState(() => _tabIndex = index);
   }
 
+  void _jumpToTabFromConsole(int index) {
+    setState(() => _tabIndex = index.clamp(0, _maxTabIndex));
+  }
+
   void _openVestibularExercises() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const VestibularExerciseHomePage(),
+      ),
+    );
+  }
+
+  void _openAdminDataConsole() {
+    final admin = _activeUser;
+    if (admin == null || !admin.isAdmin) {
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AdminDataConsolePage(
+          api: _api,
+          admin: admin,
+          initialQuestions: _questions,
+          initialDoctors: _doctors,
+          initialArticles: _blogArticles,
+          initialEducation: _education,
+          initialSettings: _appSettings,
+          onOpenQuestions: () => _jumpToTabFromConsole(2),
+          onOpenSettings: () => _jumpToTabFromConsole(4),
+          onOpenDoctorPublishing: _canAccessDoctorPublishing
+              ? () => _jumpToTabFromConsole(5)
+              : null,
+        ),
       ),
     );
   }
@@ -2168,12 +2483,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     children: [
                       _buildBrandLogoImage(
                         context,
-                        assetPath: Theme.of(context).brightness == Brightness.dark
-                            ? _brandDarkAsset
-                            : _brandLightAsset,
+                        assetPath:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? _brandDarkAsset
+                                : _brandLightAsset,
                         height: 88,
                         width: 106,
                         radius: 14,
+                        overfill: 1.24,
+                        imageAlignment: Alignment.bottomLeft,
+                        canvasColor: _brandLogoShellColor(context),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -2239,6 +2558,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _showEducationItemSheet(EducationItem item) async {
+    final videoId =
+        item.type == 'video' ? _extractYouTubeVideoId(item.url) : '';
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2264,11 +2585,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   Text(
                       '${item.type} • ${item.durationMinutes} min • ${item.language}'),
                   const SizedBox(height: 16),
-                  Text(item.summary),
+                  TranslatedTextBlock(
+                    text: item.summary,
+                    title: 'Read summary in',
+                  ),
                   if (item.url.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     FilledButton.icon(
-                      onPressed: () => _openExternalUrl(item.url),
+                      onPressed: () {
+                        if (videoId.isNotEmpty) {
+                          _showVideoPlayerSheet(
+                            videoId: videoId,
+                            videoUrl: item.url,
+                            title: item.title,
+                          );
+                        } else {
+                          _openExternalUrl(item.url);
+                        }
+                      },
                       icon: Icon(
                         item.type == 'video'
                             ? Icons.play_circle_outline_rounded
@@ -2353,12 +2687,36 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                         Text(
                             'By ${sheetArticle.authorName} • ${sheetArticle.language}'),
                         const SizedBox(height: 16),
-                        Text(sheetArticle.summary),
+                        _ArticleBulkTranslationPanel(
+                          article: sheetArticle,
+                          sections: _visibleArticleSections(sheetArticle),
+                        ),
+                        const SizedBox(height: 16),
+                        for (final section
+                            in _visibleArticleSections(sheetArticle)) ...[
+                          Text(
+                            section.title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildArticleHtml(
+                            context,
+                            section.richTextHtml.isNotEmpty
+                                ? section.richTextHtml
+                                : '<p>${_escapeHtml(section.plainText)}</p>',
+                          ),
+                          const SizedBox(height: 8),
+                          _ArticleSectionTranslationControls(
+                            article: sheetArticle,
+                            section: section,
+                          ),
+                          const SizedBox(height: 18),
+                        ],
                         if (videoId.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           _ArticleYouTubePlayer(
                             videoId: videoId,
-                            onOpenExternally: () => _openInAppUrl(videoUrl),
+                            onOpenExternally: () => _openExternalUrl(videoUrl),
                           ),
                         ],
                         if (sheetArticle.imageUrl.isNotEmpty) ...[
@@ -2373,8 +2731,6 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             ),
                           ),
                         ],
-                        const SizedBox(height: 16),
-                        _buildArticleMarkdown(context, sheetArticle.body),
                         const SizedBox(height: 18),
                         Wrap(
                           spacing: 8,
@@ -2414,7 +2770,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               ),
                             if (videoUrl.isNotEmpty)
                               FilledButton.icon(
-                                onPressed: () => _openInAppUrl(videoUrl),
+                                onPressed: () => _showVideoPlayerSheet(
+                                  videoId: videoId,
+                                  videoUrl: videoUrl,
+                                  title: sheetArticle.title,
+                                ),
                                 icon: const Icon(
                                     Icons.play_circle_outline_rounded),
                                 label: const Text('Open video'),
@@ -2440,6 +2800,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                               ),
                           ],
                         ),
+                        for (final campaign in _matchingCampaignsForText(
+                          placement: 'article',
+                          primaryText: sheetArticle.title,
+                          secondaryText:
+                              '${sheetArticle.summary} ${sheetArticle.body}',
+                          category: sheetArticle.category,
+                          language: sheetArticle.language,
+                        ).take(1)) ...[
+                          const SizedBox(height: 12),
+                          _buildSponsoredCard(
+                            context,
+                            campaign,
+                            label: 'Sponsored with this article',
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Text('Comments',
                             style: Theme.of(context).textTheme.titleMedium),
@@ -2484,7 +2859,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                           Card(
                             child: ListTile(
                               title: Text(comment.actorName),
-                              subtitle: Text(comment.body),
+                              subtitle: TranslatedTextBlock(
+                                text: comment.body,
+                                title: 'Translate comment',
+                              ),
                               trailing: _canModerateOrOwnArticleComment(comment)
                                   ? IconButton(
                                       tooltip: 'Delete comment',
@@ -2510,6 +2888,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     );
     commentController.dispose();
   }
+
+  List<_DisplayArticleSection> _visibleArticleSections(BlogArticle article) =>
+      normalizeArticleForDisplay(article);
 
   Widget _buildLoginGate(BuildContext context) {
     final isSignup = _createAccountMode;
@@ -2628,10 +3009,13 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     double? width,
     double radius = 16,
     double overfill = 1.04,
+    Alignment imageAlignment = Alignment.center,
+    Color? canvasColor,
   }) {
-    final canvasColor = assetPath.contains('_dark')
-        ? const Color(0xFF071323)
-        : Theme.of(context).colorScheme.surface;
+    final resolvedCanvasColor = canvasColor ??
+        (Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).colorScheme.surface
+            : Theme.of(context).colorScheme.surfaceContainerHighest);
     final imageWidth = width ?? height * 1.2;
 
     return SizedBox(
@@ -2640,7 +3024,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: DecoratedBox(
-          decoration: BoxDecoration(color: canvasColor),
+          decoration: BoxDecoration(color: resolvedCanvasColor),
           child: Transform.scale(
             scale: overfill,
             child: Image.asset(
@@ -2648,12 +3032,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
               width: imageWidth,
               height: height,
               fit: BoxFit.cover,
-              alignment: Alignment.center,
+              alignment: imageAlignment,
             ),
           ),
         ),
       ),
     );
+  }
+
+  Color _brandLogoShellColor(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tint = colors.primary.withValues(
+      alpha: Theme.of(context).brightness == Brightness.dark ? 0.08 : 0.05,
+    );
+    return Color.alphaBlend(tint, colors.surface);
   }
 
   Widget _buildAuthBrandPanel(
@@ -2688,7 +3080,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   height: 72,
                   width: 72,
                   radius: 18,
-                  overfill: 1.08,
+                  overfill: 1.24,
+                  imageAlignment: Alignment.bottomLeft,
+                  canvasColor: _brandLogoShellColor(context),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2727,7 +3121,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     height: 170,
                     width: 204,
                     radius: 14,
-                    overfill: 1.055,
+                    overfill: 1.24,
+                    imageAlignment: Alignment.bottomLeft,
+                    canvasColor: _brandLogoShellColor(context),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -5334,6 +5730,19 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         if (user.isAdmin) ...[
           const SizedBox(height: 16),
           Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.all(20),
+              leading: const Icon(Icons.dataset_linked_outlined),
+              title: const Text('Admin Data Console'),
+              subtitle: const Text(
+                'View live app data summaries and jump to safe moderation, publishing, and settings screens.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _openAdminDataConsole,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -5957,8 +6366,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       }
       setState(() {
         _authBusy = false;
-        _errorMessage =
-            'Firebase sign-in failed: ${_firebaseFriendlyError(error)}';
+        _errorMessage = _signInFriendlyError(error);
       });
     }
   }
@@ -6709,6 +7117,10 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       ? 'Publish or coordinate patient-friendly education posts for the MedicoHub blog.'
                       : 'Publish patient-friendly education posts that appear in the Education blog page.',
                 ),
+                if (_articlePublishError != null) ...[
+                  const SizedBox(height: 16),
+                  _buildErrorNotice(context, _articlePublishError!),
+                ],
                 const SizedBox(height: 16),
                 TextField(
                   controller: _articleTitleController,
@@ -6716,57 +7128,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                   decoration: const InputDecoration(labelText: 'Article title'),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _articleSummaryController,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Short summary'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _articleBodyController,
-                  textCapitalization: TextCapitalization.sentences,
-                  minLines: 6,
-                  maxLines: 12,
-                  decoration: const InputDecoration(
-                    labelText: 'Article body',
-                    helperText:
-                        'Use the formatting buttons below, emojis, or device speech-to-text.',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ActionChip(
-                      avatar: const Icon(Icons.format_bold_rounded),
-                      label: const Text('Bold'),
-                      onPressed: () => _insertArticleMarkup('**', '**'),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.title_rounded),
-                      label: const Text('Heading'),
-                      onPressed: () => _insertArticleMarkup('### ', ''),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.format_list_bulleted_rounded),
-                      label: const Text('Bullet'),
-                      onPressed: () => _insertArticleMarkup('\n- ', ''),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.link_rounded),
-                      label: const Text('Link'),
-                      onPressed: () =>
-                          _insertArticleMarkup('[link text](', ')'),
-                    ),
-                    ActionChip(
-                      avatar: const Icon(Icons.mood_rounded),
-                      label: const Text('Emoji'),
-                      onPressed: () => _insertArticleMarkup(' 🙂 ', ''),
-                    ),
-                  ],
-                ),
+                _buildArticleSectionEditors(context),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _articleCategory,
@@ -7307,8 +7669,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     String category = '',
     String language = '',
   }) {
-    final haystack =
-        '$primaryText $secondaryText $category $language'.toLowerCase();
+    final baseText = '$primaryText $secondaryText $category $language';
+    final haystack = '$baseText ${_adContextAliases(baseText)}'.toLowerCase();
     final categoryLower = category.toLowerCase();
     final languageLower = language.toLowerCase();
     final campaigns = _adCampaigns.where((campaign) {
@@ -7336,6 +7698,43 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }).toList()
       ..sort((a, b) => b.priority.compareTo(a.priority));
     return campaigns;
+  }
+
+  String _adContextAliases(String text) {
+    final lower = text.toLowerCase();
+    final aliases = <String>[];
+    if (RegExp(r'\bms\b').hasMatch(lower) ||
+        lower.contains('multiple sclerosis')) {
+      aliases.add('multiple sclerosis ms demyelination');
+    }
+    if (lower.contains('migraine') || lower.contains('headache')) {
+      aliases.add('migraine headache');
+    }
+    if (lower.contains('stroke') || lower.contains('tia')) {
+      aliases.add('stroke tia rehabilitation');
+    }
+    if (lower.contains('parkinson')) {
+      aliases.add('parkinson parkinsons movement disorder');
+    }
+    if (lower.contains('vertigo') ||
+        lower.contains('vestibular') ||
+        lower.contains('dizziness')) {
+      aliases.add('vertigo vestibular dizziness balance');
+    }
+    if (lower.contains('seizure') ||
+        lower.contains('epilepsy') ||
+        lower.contains('fits')) {
+      aliases.add('epilepsy seizure fits');
+    }
+    if (lower.contains('diabetes') || lower.contains('sugar')) {
+      aliases.add('diabetes sugar');
+    }
+    if (RegExp(r'\bbp\b').hasMatch(lower) ||
+        lower.contains('blood pressure') ||
+        lower.contains('hypertension')) {
+      aliases.add('hypertension blood pressure bp');
+    }
+    return aliases.join(' ');
   }
 
   Future<void> _launchAdCampaign(AdCampaign campaign) async {
@@ -7709,16 +8108,23 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       return;
     }
     if (_articleTitleController.text.trim().isEmpty ||
-        _articleSummaryController.text.trim().isEmpty ||
-        _articleBodyController.text.trim().isEmpty) {
+        _articleSectionEditors.every(
+          (section) => section.plainText.trim().isEmpty,
+        )) {
+      final message =
+          'Article title and at least one non-empty section are required before publishing.';
       setState(() {
-        _errorMessage = 'Article title, summary, and body are required.';
+        _articlePublishError = message;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
       return;
     }
     setState(() {
       _adminBusy = true;
       _errorMessage = null;
+      _articlePublishError = null;
     });
     try {
       final wasEditing = _editingArticleId != null;
@@ -7732,31 +8138,43 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           : youtubeInput.contains('://') || youtubeInput.contains('youtu')
               ? youtubeInput
               : _normalizedYouTubeUrl(youtubeVideoId);
+      final sections = _articleSectionsForSave();
+      final sectionOrder = sections.keys.toList();
+      final summaryText = sections['summary']?.plainText ??
+          (sections.isNotEmpty ? sections.values.first.plainText : '');
+      final bodyText = sections.values
+          .map((section) => section.richTextHtml)
+          .where((text) => text.trim().isNotEmpty)
+          .join('\n\n');
       final article = !wasEditing
           ? await _api.createBlogArticle(
               authorId: user.id,
               title: _articleTitleController.text.trim(),
-              summary: _articleSummaryController.text.trim(),
-              body: _articleBodyController.text.trim(),
+              summary: summaryText,
+              body: bodyText,
               category: _articleCategory,
               language: _selectedLanguage,
               sourceUrl: _articleSourceUrlController.text.trim(),
               imageUrl: _articleImageUrlController.text.trim(),
               youtubeUrl: youtubeUrl,
               youtubeVideoId: youtubeVideoId,
+              sectionOrder: sectionOrder,
+              sections: sections,
             )
           : await _api.updateBlogArticle(
               articleId: _editingArticleId!,
               actorId: user.id,
               title: _articleTitleController.text.trim(),
-              summary: _articleSummaryController.text.trim(),
-              body: _articleBodyController.text.trim(),
+              summary: summaryText,
+              body: bodyText,
               category: _articleCategory,
               language: _selectedLanguage,
               sourceUrl: _articleSourceUrlController.text.trim(),
               imageUrl: _articleImageUrlController.text.trim(),
               youtubeUrl: youtubeUrl,
               youtubeVideoId: youtubeVideoId,
+              sectionOrder: sectionOrder,
+              sections: sections,
             );
       if (!mounted) {
         return;
@@ -7772,34 +8190,319 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             ? 'Article published to the Education tab.'
             : 'Article updated in the Education tab.';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(!wasEditing
+              ? 'Article published to the Education tab.'
+              : 'Article updated in the Education tab.'),
+        ),
+      );
     } catch (error) {
       if (!mounted) {
         return;
       }
+      final message = _friendlyArticlePublishError(error);
       setState(() {
         _adminBusy = false;
-        _errorMessage = 'Could not publish article: $error';
+        _articlePublishError = message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  Widget _buildArticleSectionEditors(BuildContext context) {
+    if (_articleSectionEditors.isEmpty) {
+      _addArticleSection('summary');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Article sections',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Add section',
+              onSelected: (id) => setState(() => _addArticleSection(id)),
+              itemBuilder: (context) => _articleSectionOptions.entries
+                  .where((entry) => !_articleSectionEditors
+                      .any((item) => item.id == entry.key))
+                  .map(
+                    (entry) => PopupMenuItem<String>(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
+                  )
+                  .toList(),
+              child: FilledButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add Section'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (var index = 0; index < _articleSectionEditors.length; index++)
+          _buildArticleSectionEditor(
+              context, _articleSectionEditors[index], index),
+      ],
+    );
+  }
+
+  Widget _buildArticleSectionEditor(
+    BuildContext context,
+    _ArticleSectionEditorData section,
+    int index,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final sectionItems = _sectionDropdownItemsFor(section);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue:
+                        safeDropdownValue<String>(section.id, sectionItems),
+                    decoration:
+                        const InputDecoration(labelText: 'Section label'),
+                    items: sectionItems,
+                    onChanged: (value) {
+                      if (value == null || value == section.id) {
+                        return;
+                      }
+                      if (_articleSectionEditors
+                          .any((item) => item.id == value)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('That section already exists.')),
+                        );
+                        return;
+                      }
+                      setState(() {
+                        section.id = value;
+                        section.label =
+                            _articleSectionOptions[value] ?? section.label;
+                      });
+                    },
+                  ),
+                ),
+                IconButton(
+                  tooltip: index == 0 ? 'Already first' : 'Move up',
+                  onPressed: index == 0
+                      ? null
+                      : () => setState(() {
+                            final item = _articleSectionEditors.removeAt(index);
+                            _articleSectionEditors.insert(index - 1, item);
+                          }),
+                  icon: const Icon(Icons.arrow_upward_rounded),
+                ),
+                IconButton(
+                  tooltip: index == _articleSectionEditors.length - 1
+                      ? 'Already last'
+                      : 'Move down',
+                  onPressed: index == _articleSectionEditors.length - 1
+                      ? null
+                      : () => setState(() {
+                            final item = _articleSectionEditors.removeAt(index);
+                            _articleSectionEditors.insert(index + 1, item);
+                          }),
+                  icon: const Icon(Icons.arrow_downward_rounded),
+                ),
+                IconButton(
+                  tooltip: section.collapsed ? 'Expand' : 'Collapse',
+                  onPressed: () =>
+                      setState(() => section.collapsed = !section.collapsed),
+                  icon: Icon(section.collapsed
+                      ? Icons.expand_more_rounded
+                      : Icons.expand_less_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Delete section',
+                  onPressed: () => _confirmDeleteArticleSection(section),
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: colorScheme.error),
+                ),
+              ],
+            ),
+            if (!section.collapsed) ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: section.titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Custom section title (optional)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Section content',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 6),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    QuillSimpleToolbar(
+                      controller: section.quillController,
+                      config: const QuillSimpleToolbarConfig(
+                        multiRowsDisplay: true,
+                        showFontFamily: false,
+                        showFontSize: false,
+                        showInlineCode: false,
+                        showCodeBlock: false,
+                        showSearchButton: false,
+                        showAlignmentButtons: true,
+                        showDirection: false,
+                      ),
+                    ),
+                    Divider(height: 1, color: colorScheme.outlineVariant),
+                    SizedBox(
+                      height: 260,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: QuillEditor(
+                          controller: section.quillController,
+                          focusNode: section.focusNode,
+                          scrollController: section.scrollController,
+                          config: const QuillEditorConfig(
+                            placeholder:
+                                'Write this section. Empty sections are not shown to readers.',
+                            expands: false,
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<DropdownMenuItem<String>> _sectionDropdownItemsFor(
+      _ArticleSectionEditorData section) {
+    final entries = <String, String>{
+      ..._articleSectionOptions,
+      if (!_articleSectionOptions.containsKey(section.id))
+        section.id:
+            section.label.trim().isNotEmpty ? section.label : 'Custom section',
+    };
+    final seen = <String>{};
+    return entries.entries.where((entry) => seen.add(entry.key)).map((entry) {
+      return DropdownMenuItem<String>(
+        value: entry.key,
+        child: Text(entry.value),
+      );
+    }).toList();
+  }
+
+  void _addArticleSection(String id) {
+    final canonicalId = _canonicalArticleSectionId(id);
+    if (_articleSectionEditors.any((section) => section.id == canonicalId)) {
+      return;
+    }
+    _articleSectionEditors.add(
+      _ArticleSectionEditorData(
+        id: canonicalId,
+        label: _articleSectionOptions[canonicalId] ?? 'Custom Section',
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteArticleSection(
+      _ArticleSectionEditorData section) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete section?'),
+        content: Text('Remove "${section.label}" from this article?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() {
+        _articleSectionEditors.remove(section);
+        section.dispose();
       });
     }
   }
 
-  void _insertArticleMarkup(String before, String after) {
-    final value = _articleBodyController.value;
-    final selection = value.selection;
-    final selected = selection.isValid
-        ? value.text.substring(selection.start, selection.end)
-        : '';
-    final replacement = '$before$selected$after';
-    final nextText = selection.isValid
-        ? value.text.replaceRange(selection.start, selection.end, replacement)
-        : '${value.text}$replacement';
-    final cursor = selection.isValid
-        ? selection.start + replacement.length
-        : nextText.length;
-    _articleBodyController.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: cursor),
-    );
+  Map<String, BlogArticleSection> _articleSectionsForSave() {
+    final sections = <String, BlogArticleSection>{};
+    for (var index = 0; index < _articleSectionEditors.length; index++) {
+      final editor = _articleSectionEditors[index];
+      final plainText = editor.plainText.trim();
+      if (plainText.isEmpty) {
+        continue;
+      }
+      final html = editor.toHtml().trim();
+      sections[editor.id] = BlogArticleSection(
+        id: editor.id,
+        label: editor.label,
+        customTitle: editor.titleController.text.trim(),
+        order: sections.length + 1,
+        richTextHtml: html,
+        plainText: plainText,
+        quillDeltaJson: editor.deltaJson,
+        createdAt: '',
+        updatedAt: '',
+      );
+    }
+    return sections;
+  }
+
+  String _friendlyArticlePublishError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (lower.contains('youtube')) {
+      return 'Please check the YouTube URL. Paste a normal YouTube watch link, shorts link, youtu.be link, embed link, or an 11-character video ID.';
+    }
+    if (lower.contains('403') ||
+        lower.contains('doctor') ||
+        lower.contains('admin') ||
+        lower.contains('not allowed') ||
+        lower.contains('forbidden')) {
+      return 'This account is not allowed to publish articles. Please sign in as a doctor or admin account and try again.';
+    }
+    if (lower.contains('socket') ||
+        lower.contains('connection') ||
+        lower.contains('host') ||
+        lower.contains('timeout')) {
+      return 'MedicoHub could not reach the publishing service. Please check the backend connection and try again.';
+    }
+    if (raw.isEmpty) {
+      return 'The article could not be published. Please review the fields and try again.';
+    }
+    return 'The article could not be published: $raw';
   }
 
   void _startEditArticle(BlogArticle article) {
@@ -7812,6 +8515,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
       _articleSourceUrlController.text = article.sourceUrl;
       _articleImageUrlController.text = article.imageUrl;
       _articleYoutubeUrlController.text = article.youtubeUrl;
+      for (final section in _articleSectionEditors) {
+        section.dispose();
+      }
+      _articleSectionEditors
+        ..clear()
+        ..addAll(
+          normalizeArticleForDisplay(article).map(
+            (section) => _ArticleSectionEditorData.fromDisplaySection(section),
+          ),
+        );
+      if (_articleSectionEditors.isEmpty) {
+        _addArticleSection('summary');
+      }
+      _articlePublishError = null;
       _tabIndex = _maxTabIndex;
       _voiceStatus = 'Editing ${article.title}.';
     });
@@ -7822,6 +8539,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     _articleTitleController.clear();
     _articleSummaryController.clear();
     _articleBodyController.clear();
+    for (final section in _articleSectionEditors) {
+      section.dispose();
+    }
+    _articleSectionEditors
+      ..clear()
+      ..add(_ArticleSectionEditorData(id: 'summary', label: 'Summary'));
     _articleSourceUrlController.clear();
     _articleImageUrlController.clear();
     _articleYoutubeUrlController.clear();
@@ -9151,6 +9874,17 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
     return text;
   }
+
+  String _signInFriendlyError(Object error) {
+    final message = _firebaseFriendlyError(error);
+    if (message.contains('Backend is temporarily unavailable') ||
+        message.contains('SocketException') ||
+        message.contains('Connection refused') ||
+        message.contains('Failed host lookup')) {
+      return 'MedicoHub profile sign-in failed: $message';
+    }
+    return 'Firebase sign-in failed: $message';
+  }
 }
 
 DateTime _safeQuestionDate(String? raw) {
@@ -9299,7 +10033,10 @@ class _QuestionCard extends StatelessWidget {
           ),
         ),
         children: [
-          Text(question.body),
+          TranslatedTextBlock(
+            text: question.body,
+            title: 'Read question in',
+          ),
           const SizedBox(height: 12),
           Text(
             '${question.headingGroup} • ${question.language} • ${question.isPublic ? 'Public thread' : 'Private thread'}',
@@ -9315,8 +10052,9 @@ class _QuestionCard extends StatelessWidget {
           ],
           if (question.aiSummary.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(
-              question.aiSummary,
+            TranslatedTextBlock(
+              text: question.aiSummary,
+              title: 'Read summary in',
               style: TextStyle(color: Theme.of(context).colorScheme.primary),
             ),
           ],
@@ -9526,10 +10264,11 @@ class _ThreadMessageTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            message.moderationState == 'hidden'
+          TranslatedTextBlock(
+            text: message.moderationState == 'hidden'
                 ? '[Message hidden by moderation]'
                 : message.body,
+            title: 'Read message in',
           ),
         ],
       ),
@@ -9588,15 +10327,539 @@ class _DoctorResponseTile extends StatelessWidget {
                 .toList(),
           ),
           const SizedBox(height: 8),
-          Text('Key points: ${response.keyPoints}'),
+          TranslatedTextBlock(
+            text: 'Key points: ${response.keyPoints}',
+            title: 'Read response in',
+          ),
           const SizedBox(height: 6),
-          Text('What it means: ${response.whatItMeans}'),
+          TranslatedTextBlock(
+            text: 'What it means: ${response.whatItMeans}',
+            title: 'Read response in',
+          ),
           const SizedBox(height: 6),
-          Text(
-              'What to discuss with your doctor: ${response.whatToDiscussWithDoctor}'),
+          TranslatedTextBlock(
+            text:
+                'What to discuss with your doctor: ${response.whatToDiscussWithDoctor}',
+            title: 'Read response in',
+          ),
           const SizedBox(height: 6),
-          Text(response.fullText),
+          TranslatedTextBlock(
+            text: response.fullText,
+            title: 'Read full reply in',
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class AdminDataConsolePage extends StatefulWidget {
+  const AdminDataConsolePage({
+    super.key,
+    required this.api,
+    required this.admin,
+    required this.initialQuestions,
+    required this.initialDoctors,
+    required this.initialArticles,
+    required this.initialEducation,
+    required this.initialSettings,
+    required this.onOpenQuestions,
+    required this.onOpenSettings,
+    this.onOpenDoctorPublishing,
+  });
+
+  final AppApiService api;
+  final UserProfile admin;
+  final List<ForumQuestion> initialQuestions;
+  final List<DoctorDirectoryEntry> initialDoctors;
+  final List<BlogArticle> initialArticles;
+  final List<EducationItem> initialEducation;
+  final AppSettings? initialSettings;
+  final VoidCallback onOpenQuestions;
+  final VoidCallback onOpenSettings;
+  final VoidCallback? onOpenDoctorPublishing;
+
+  @override
+  State<AdminDataConsolePage> createState() => _AdminDataConsolePageState();
+}
+
+class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
+  late List<ForumQuestion> _questions = List.of(widget.initialQuestions);
+  late List<DoctorDirectoryEntry> _doctors = List.of(widget.initialDoctors);
+  late List<BlogArticle> _articles = List.of(widget.initialArticles);
+  late List<EducationItem> _education = List.of(widget.initialEducation);
+  late AppSettings? _settings = widget.initialSettings;
+  Map<String, dynamic> _translationUsage = const <String, dynamic>{};
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_questions.isEmpty ||
+        _doctors.isEmpty ||
+        _articles.isEmpty ||
+        _education.isEmpty ||
+        _settings == null) {
+      unawaited(_refresh());
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final questions = await widget.api.fetchQuestions();
+      final doctors = await widget.api.fetchDoctors();
+      final articles = await widget.api.fetchBlogArticles();
+      final education = await widget.api.fetchEducation();
+      final settings = await widget.api.fetchAppSettings();
+      final translationUsage = await widget.api.fetchTranslationUsage();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _questions = questions;
+        _doctors = doctors;
+        _articles = articles;
+        _education = education;
+        _settings = settings;
+        _translationUsage = translationUsage;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error =
+            'Could not refresh admin data. Existing cached app data is still shown.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  void _closeAndRun(VoidCallback callback) {
+    Navigator.of(context).pop();
+    callback();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final openQuestions = _questions
+        .where((question) => question.status.toLowerCase() == 'open')
+        .length;
+    final publicQuestions =
+        _questions.where((question) => question.isPublic).length;
+    final publishedArticles = _articles
+        .where((article) => article.status.toLowerCase() == 'published')
+        .length;
+    final topics = _settings?.questionTopics.length ?? 0;
+    final translationCalls =
+        (_translationUsage['providerCalls'] ?? 0).toString();
+    final translationCharacters =
+        (_translationUsage['charactersTranslated'] ?? 0).toString();
+    final latestQuestions = List<ForumQuestion>.of(_questions)
+      ..sort((a, b) => _sortMoment(b).compareTo(_sortMoment(a)));
+    final latestArticles = List<BlogArticle>.of(_articles)
+      ..sort((a, b) => _sortTextMoment(b.updatedAt, b.createdAt)
+          .compareTo(_sortTextMoment(a.updatedAt, a.createdAt)));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Data Console'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh live data',
+            onPressed: _loading ? null : _refresh,
+            icon: _loading
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _AdminNoticeCard(
+              title: 'Safe admin access',
+              message:
+                  'This console reads live app data through the existing backend and routes edits through audited screens. It does not expose raw Firestore document editing.',
+              icon: Icons.admin_panel_settings_outlined,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              _AdminNoticeCard(
+                title: 'Refresh notice',
+                message: _error!,
+                icon: Icons.info_outline_rounded,
+                isWarning: true,
+              ),
+            ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _AdminMetricCard(
+                  label: 'Questions',
+                  value: _questions.length.toString(),
+                  detail: '$openQuestions open • $publicQuestions public',
+                  icon: Icons.forum_outlined,
+                ),
+                _AdminMetricCard(
+                  label: 'Doctors',
+                  value: _doctors.length.toString(),
+                  detail: 'Directory entries',
+                  icon: Icons.medical_services_outlined,
+                ),
+                _AdminMetricCard(
+                  label: 'Articles',
+                  value: _articles.length.toString(),
+                  detail: '$publishedArticles published',
+                  icon: Icons.article_outlined,
+                ),
+                _AdminMetricCard(
+                  label: 'Education',
+                  value: _education.length.toString(),
+                  detail: 'Library items',
+                  icon: Icons.auto_stories_outlined,
+                ),
+                _AdminMetricCard(
+                  label: 'Topics',
+                  value: topics.toString(),
+                  detail: 'Ask Question filters',
+                  icon: Icons.sell_outlined,
+                ),
+                _AdminMetricCard(
+                  label: 'Azure Translation',
+                  value: translationCalls,
+                  detail: '$translationCharacters characters',
+                  icon: Icons.translate_rounded,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _AdminTranslationUsageCard(usage: _translationUsage),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Safe edit shortcuts',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Use these for controlled changes. Raw database editing should stay in Firebase Console or purpose-built audited screens.',
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => _closeAndRun(widget.onOpenQuestions),
+                          icon: const Icon(Icons.rule_folder_outlined),
+                          label: const Text('Question moderation'),
+                        ),
+                        if (widget.onOpenDoctorPublishing != null)
+                          OutlinedButton.icon(
+                            onPressed: () => _closeAndRun(
+                              widget.onOpenDoctorPublishing!,
+                            ),
+                            icon: const Icon(Icons.edit_document),
+                            label: const Text('Doctor publishing'),
+                          ),
+                        OutlinedButton.icon(
+                          onPressed: () => _closeAndRun(widget.onOpenSettings),
+                          icon: const Icon(Icons.settings_outlined),
+                          label: const Text('Topics, ads & settings'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _AdminSectionCard(
+              title: 'Latest Questions',
+              emptyMessage: 'No questions were returned by the backend.',
+              children: latestQuestions.take(6).map((question) {
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    question.status.toLowerCase() == 'open'
+                        ? Icons.mark_chat_unread_outlined
+                        : Icons.check_circle_outline_rounded,
+                  ),
+                  title: Text(question.title.isEmpty
+                      ? 'Untitled question'
+                      : question.title),
+                  subtitle: Text(
+                    [
+                      question.headingGroup,
+                      question.language,
+                      question.isPublic ? 'Public' : 'Private',
+                      'Updated ${_formatQuestionTimestamp(question.updatedAt.isEmpty ? question.createdAt : question.updatedAt)}',
+                    ].join(' • '),
+                  ),
+                  trailing: Chip(label: Text(question.status)),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            _AdminSectionCard(
+              title: 'Doctor Directory',
+              emptyMessage: 'No doctors were returned by the backend.',
+              children: _doctors.take(6).map((doctor) {
+                final specialty = doctor.specialties.isEmpty
+                    ? 'General'
+                    : doctor.specialties.join(', ');
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_search_outlined),
+                  title: Text(doctor.displayName),
+                  subtitle: Text('${doctor.email} • $specialty'),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            _AdminSectionCard(
+              title: 'Published Content',
+              emptyMessage: 'No articles were returned by the backend.',
+              children: latestArticles.take(6).map((article) {
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.article_outlined),
+                  title: Text(article.title),
+                  subtitle: Text(
+                    '${article.category} • ${article.language} • ${article.status}',
+                  ),
+                  trailing: Text(_formatQuestionTimestamp(
+                    article.updatedAt.isEmpty
+                        ? article.createdAt
+                        : article.updatedAt,
+                  )),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  DateTime _sortMoment(ForumQuestion question) {
+    return _sortTextMoment(question.updatedAt, question.createdAt);
+  }
+
+  DateTime _sortTextMoment(String primary, String fallback) {
+    return DateTime.tryParse(primary) ??
+        DateTime.tryParse(fallback) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+}
+
+class _AdminMetricCard extends StatelessWidget {
+  const _AdminMetricCard({
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final String detail;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(height: 12),
+              Text(label, style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              Text(value, style: Theme.of(context).textTheme.headlineMedium),
+              const SizedBox(height: 4),
+              Text(detail),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminTranslationUsageCard extends StatelessWidget {
+  const _AdminTranslationUsageCard({required this.usage});
+
+  final Map<String, dynamic> usage;
+
+  @override
+  Widget build(BuildContext context) {
+    final languagePairs =
+        (usage['languagePairs'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
+    final providers = (usage['providers'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
+    final sections = (usage['sections'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.analytics_outlined,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Translation Usage',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              usage['note']?.toString() ??
+                  'Provider calls are logged only when Azure creates a new translation.',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _usageChip('Provider calls', usage['providerCalls']),
+                _usageChip('Characters', usage['charactersTranslated']),
+                for (final entry in providers.entries)
+                  _usageChip('Provider ${entry.key}', entry.value),
+                for (final entry in languagePairs.entries)
+                  _usageChip(entry.key, entry.value),
+                for (final entry in sections.entries.take(6))
+                  _usageChip('Section ${entry.key}', entry.value),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _usageChip(String label, Object? value) {
+    return Chip(label: Text('$label: ${value ?? 0}'));
+  }
+}
+
+class _AdminNoticeCard extends StatelessWidget {
+  const _AdminNoticeCard({
+    required this.title,
+    required this.message,
+    required this.icon,
+    this.isWarning = false,
+  });
+
+  final String title;
+  final String message;
+  final IconData icon;
+  final bool isWarning;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isWarning ? colors.errorContainer : colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color: isWarning
+                ? colors.onErrorContainer
+                : colors.onSecondaryContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: isWarning
+                            ? colors.onErrorContainer
+                            : colors.onSecondaryContainer,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: isWarning
+                        ? colors.onErrorContainer
+                        : colors.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminSectionCard extends StatelessWidget {
+  const _AdminSectionCard({
+    required this.title,
+    required this.emptyMessage,
+    required this.children,
+  });
+
+  final String title;
+  final String emptyMessage;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            if (children.isEmpty) Text(emptyMessage) else ...children,
+          ],
+        ),
       ),
     );
   }
@@ -9616,37 +10879,52 @@ class _ArticleYouTubePlayer extends StatefulWidget {
 }
 
 class _ArticleYouTubePlayerState extends State<_ArticleYouTubePlayer> {
-  late final YoutubePlayerController _controller;
+  YoutubePlayerController? _controller;
+
+  bool get _shouldUseInlinePlayer {
+    return kIsWeb &&
+        defaultTargetPlatform != TargetPlatform.iOS &&
+        defaultTargetPlatform != TargetPlatform.android;
+  }
 
   @override
   void initState() {
     super.initState();
-    _controller = YoutubePlayerController.fromVideoId(
-      videoId: widget.videoId,
-      autoPlay: false,
-      params: const YoutubePlayerParams(
-        showControls: true,
-        showFullscreenButton: true,
-        strictRelatedVideos: true,
-      ),
-    );
+    if (_shouldUseInlinePlayer) {
+      _controller = YoutubePlayerController.fromVideoId(
+        videoId: widget.videoId,
+        autoPlay: false,
+        params: const YoutubePlayerParams(
+          showControls: true,
+          showFullscreenButton: true,
+          strictRelatedVideos: true,
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
-    _controller.close();
+    _controller?.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) {
+      return _MobileYouTubeOpenCard(
+        videoId: widget.videoId,
+        onOpenExternally: widget.onOpenExternally,
+      );
+    }
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           YoutubePlayer(
-            controller: _controller,
+            controller: controller,
             aspectRatio: 16 / 9,
           ),
           Padding(
@@ -9670,4 +10948,770 @@ class _ArticleYouTubePlayerState extends State<_ArticleYouTubePlayer> {
       ),
     );
   }
+}
+
+class _MobileYouTubeOpenCard extends StatelessWidget {
+  const _MobileYouTubeOpenCard({
+    required this.videoId,
+    required this.onOpenExternally,
+  });
+
+  final String videoId;
+  final VoidCallback onOpenExternally;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumbnailUrl = 'https://img.youtube.com/vi/$videoId/hqdefault.jpg';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(
+                  thumbnailUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const ColoredBox(
+                    color: Color(0xFF111827),
+                    child: Center(
+                      child: Icon(
+                        Icons.smart_display_rounded,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.05),
+                        Colors.black.withValues(alpha: 0.42),
+                      ],
+                    ),
+                  ),
+                ),
+                Center(
+                  child: FilledButton.icon(
+                    onPressed: onOpenExternally,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Open on YouTube'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.smart_display_rounded),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Video opens in YouTube on this device'),
+                ),
+                TextButton.icon(
+                  onPressed: onOpenExternally,
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('Open'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DisplayArticleSection {
+  const _DisplayArticleSection({
+    required this.id,
+    required this.label,
+    required this.customTitle,
+    required this.richTextHtml,
+    required this.plainText,
+    required this.updatedAt,
+    required this.isLegacyFallback,
+    this.quillDeltaJson = const <Map<String, dynamic>>[],
+  });
+
+  final String id;
+  final String label;
+  final String customTitle;
+  final String richTextHtml;
+  final String plainText;
+  final String updatedAt;
+  final bool isLegacyFallback;
+  final List<Map<String, dynamic>> quillDeltaJson;
+
+  String get title => customTitle.trim().isNotEmpty ? customTitle : label;
+}
+
+class _ArticleBulkTranslationPanel extends StatefulWidget {
+  const _ArticleBulkTranslationPanel({
+    required this.article,
+    required this.sections,
+  });
+
+  final BlogArticle article;
+  final List<_DisplayArticleSection> sections;
+
+  @override
+  State<_ArticleBulkTranslationPanel> createState() =>
+      _ArticleBulkTranslationPanelState();
+}
+
+class _ArticleBulkTranslationPanelState
+    extends State<_ArticleBulkTranslationPanel> {
+  final TranslationService _service = TranslationService();
+  final Map<String, SectionTranslationResult> _results =
+      <String, SectionTranslationResult>{};
+  final Set<String> _selected = <String>{};
+  String _targetLanguage = 'ar';
+  bool _loading = false;
+  String _status = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selected.addAll(widget.sections.map((section) => section.id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.sections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final languageItems =
+        _languageDropdownItemsExcluding(widget.article.defaultLanguage);
+    final successful = _results.values.where((result) => result.success).length;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Translate article',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                DropdownButton<String>(
+                  value:
+                      safeDropdownValue<String>(_targetLanguage, languageItems),
+                  hint: const Text('Language'),
+                  items: languageItems,
+                  onChanged: _loading
+                      ? null
+                      : (value) => setState(
+                          () => _targetLanguage = value ?? _targetLanguage),
+                ),
+                FilledButton.icon(
+                  onPressed: _loading ? null : () => _translate(_selected),
+                  icon: _loading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.translate_rounded),
+                  label:
+                      Text(_loading ? 'Translating...' : 'Translate selected'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () => _translate(
+                            widget.sections
+                                .map((section) => section.id)
+                                .toSet(),
+                          ),
+                  icon: const Icon(Icons.done_all_rounded),
+                  label: const Text('Translate all'),
+                ),
+                if (successful > 0)
+                  OutlinedButton.icon(
+                    onPressed: () => _export('html'),
+                    icon: const Icon(Icons.html_rounded),
+                    label: const Text('Export HTML'),
+                  ),
+                if (successful > 0)
+                  OutlinedButton.icon(
+                    onPressed: () => _export('txt'),
+                    icon: const Icon(Icons.description_rounded),
+                    label: const Text('Export TXT'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.sections.map((section) {
+                return FilterChip(
+                  label: Text(section.title),
+                  selected: _selected.contains(section.id),
+                  onSelected: _loading
+                      ? null
+                      : (selected) => setState(() {
+                            if (selected) {
+                              _selected.add(section.id);
+                            } else {
+                              _selected.remove(section.id);
+                            }
+                          }),
+                );
+              }).toList(),
+            ),
+            if (_status.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_status, style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (successful > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Machine translation may contain errors. Please consult a doctor for medical decisions.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              for (final section in widget.sections)
+                if (_results[section.id]?.success == true) ...[
+                  Text(section.title,
+                      style: Theme.of(context).textTheme.titleSmall),
+                  HtmlWidget(_results[section.id]!.translatedRichTextHtml),
+                  const SizedBox(height: 8),
+                ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<DropdownMenuItem<String>> _languageDropdownItemsExcluding(
+      String sourceLanguageCode) {
+    final seen = <String>{};
+    return medicoHubLanguages
+        .where((language) => language.code != sourceLanguageCode)
+        .where((language) => seen.add(language.code))
+        .map(
+          (language) => DropdownMenuItem<String>(
+            value: language.code,
+            child: Text('${language.nativeLabel} (${language.label})'),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _translate(Set<String> sectionIds) async {
+    if (_loading || sectionIds.isEmpty) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _status = 'Preparing translation...';
+    });
+    var completed = 0;
+    for (final section
+        in widget.sections.where((item) => sectionIds.contains(item.id))) {
+      final result = await _service.translateSection(
+        articleId: widget.article.id,
+        sectionId: section.id,
+        sourceLanguageCode: widget.article.defaultLanguage,
+        targetLanguageCode: _targetLanguage,
+        richTextHtml: section.richTextHtml,
+        plainText: section.plainText,
+        sourceUpdatedAt: section.updatedAt,
+      );
+      if (!mounted) {
+        return;
+      }
+      completed += 1;
+      setState(() {
+        _results[section.id] = result;
+        _status =
+            'Translated $completed of ${sectionIds.length}. Last source: ${result.cacheSource}.';
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _status =
+            'Translation ready. Saved sections can be reused on this device.';
+      });
+    }
+  }
+
+  Future<void> _export(String format) async {
+    final successful = widget.sections
+        .where((section) => _results[section.id]?.success == true)
+        .toList();
+    if (successful.isEmpty) {
+      return;
+    }
+    final safeTitle = widget.article.title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final date = DateTime.now().toIso8601String().split('T').first;
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File(
+      '${directory.path}\\${safeTitle}_${_targetLanguage}_$date.$format',
+    );
+    final content = format == 'html'
+        ? _combinedHtml(successful, date)
+        : _combinedText(successful, date);
+    await file.writeAsString(content);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${file.path}')),
+      );
+    }
+  }
+
+  String _combinedHtml(List<_DisplayArticleSection> sections, String date) {
+    final buffer = StringBuffer()
+      ..write(
+          '<h1>${_ArticleSectionEditorData._escapeStaticHtml(widget.article.title)}</h1>')
+      ..write('<p>Original language: ${widget.article.defaultLanguage}<br>')
+      ..write(
+          'Translation language: $_targetLanguage<br>Date saved: $date</p>');
+    for (final section in sections) {
+      buffer
+        ..write(
+            '<h2>${_ArticleSectionEditorData._escapeStaticHtml(section.title)}</h2>')
+        ..write(_results[section.id]!.translatedRichTextHtml);
+    }
+    buffer.write(
+      '<p><strong>This is machine-translated content and may contain errors.</strong></p>',
+    );
+    return buffer.toString();
+  }
+
+  String _combinedText(List<_DisplayArticleSection> sections, String date) {
+    final buffer = StringBuffer()
+      ..writeln(widget.article.title)
+      ..writeln('Original language: ${widget.article.defaultLanguage}')
+      ..writeln('Translation language: $_targetLanguage')
+      ..writeln('Date saved: $date')
+      ..writeln();
+    for (final section in sections) {
+      buffer
+        ..writeln(section.title)
+        ..writeln(_results[section.id]!.translatedPlainText)
+        ..writeln();
+    }
+    buffer
+        .writeln('This is machine-translated content and may contain errors.');
+    return buffer.toString();
+  }
+}
+
+class _ArticleSectionTranslationControls extends StatefulWidget {
+  const _ArticleSectionTranslationControls({
+    required this.article,
+    required this.section,
+  });
+
+  final BlogArticle article;
+  final _DisplayArticleSection section;
+
+  @override
+  State<_ArticleSectionTranslationControls> createState() =>
+      _ArticleSectionTranslationControlsState();
+}
+
+class _ArticleSectionTranslationControlsState
+    extends State<_ArticleSectionTranslationControls> {
+  final TranslationService _service = TranslationService();
+  String _targetLanguage = 'ar';
+  bool _loading = false;
+  SectionTranslationResult? _result;
+  List<SectionTranslationResult> _saved = const <SectionTranslationResult>[];
+  String _status = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSaved());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final result = _result;
+    final languageItems =
+        _languageDropdownItemsExcluding(widget.article.defaultLanguage);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                DropdownButton<String>(
+                  value:
+                      safeDropdownValue<String>(_targetLanguage, languageItems),
+                  hint: const Text('Language'),
+                  items: languageItems,
+                  onChanged: _loading
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            setState(() => _targetLanguage = value);
+                          }
+                        },
+                ),
+                FilledButton.icon(
+                  onPressed: _loading ? null : _translate,
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.translate_rounded),
+                  label:
+                      Text(_loading ? 'Translating...' : 'Translate section'),
+                ),
+                if (result != null && result.success)
+                  OutlinedButton.icon(
+                    onPressed: () => _export('html'),
+                    icon: const Icon(Icons.html_rounded),
+                    label: const Text('Export HTML'),
+                  ),
+                if (result != null && result.success)
+                  OutlinedButton.icon(
+                    onPressed: () => _export('txt'),
+                    icon: const Icon(Icons.description_rounded),
+                    label: const Text('Export TXT'),
+                  ),
+                if (_saved.isNotEmpty)
+                  PopupMenuButton<SectionTranslationResult>(
+                    tooltip: 'Load saved translation',
+                    onSelected: (saved) {
+                      setState(() {
+                        _targetLanguage = saved.targetLanguageCode;
+                        _result = saved;
+                        _status = 'Using saved translation';
+                      });
+                    },
+                    itemBuilder: (context) => _saved
+                        .map(
+                          (saved) => PopupMenuItem<SectionTranslationResult>(
+                            value: saved,
+                            child: Text('Saved ${saved.targetLanguageCode}'),
+                          ),
+                        )
+                        .toList(),
+                    child: OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.download_done_rounded),
+                      label: Text('Saved (${_saved.length})'),
+                    ),
+                  ),
+                if (_saved.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Clear saved translations for this section',
+                    onPressed: _clearSaved,
+                    icon: const Icon(Icons.delete_sweep_outlined),
+                  ),
+              ],
+            ),
+            if (_status.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_status, style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (result != null && result.success) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                      label: Text(
+                          'Provider: ${result.provider == 'microsoft-azure' ? 'Microsoft Azure' : result.provider}')),
+                  Chip(label: Text('Cache: ${result.cacheSource}')),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Machine translation may contain errors. Please consult a doctor for medical decisions.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              HtmlWidget(result.translatedRichTextHtml),
+            ],
+            if (result != null && !result.success) ...[
+              const SizedBox(height: 8),
+              Text(
+                result.message.isEmpty
+                    ? 'Could not translate now. Please try again later.'
+                    : result.message,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _translate() async {
+    if (_loading) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _status = '';
+    });
+    final result = await _service.translateSection(
+      articleId: widget.article.id,
+      sectionId: widget.section.id,
+      sourceLanguageCode: widget.article.defaultLanguage,
+      targetLanguageCode: _targetLanguage,
+      richTextHtml: widget.section.richTextHtml,
+      plainText: widget.section.plainText,
+      sourceUpdatedAt: widget.section.updatedAt,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _result = result;
+      _status = result.success
+          ? result.cacheSource == 'local'
+              ? 'Using saved translation'
+              : result.cacheSource == 'server'
+                  ? 'Using saved translation'
+                  : 'New translation generated'
+          : result.message.isNotEmpty
+              ? result.message
+              : 'Translation failed';
+    });
+    await _loadSaved();
+  }
+
+  Future<void> _loadSaved() async {
+    final saved = await _service.savedSectionTranslations(
+      articleId: widget.article.id,
+      sectionId: widget.section.id,
+    );
+    if (mounted) {
+      setState(() => _saved = saved);
+    }
+  }
+
+  Future<void> _clearSaved() async {
+    await _service.clearSavedSectionTranslations(
+      articleId: widget.article.id,
+      sectionId: widget.section.id,
+    );
+    if (mounted) {
+      setState(() {
+        _saved = const <SectionTranslationResult>[];
+        _status = 'Saved translations cleared from this device.';
+      });
+    }
+  }
+
+  Future<void> _export(String format) async {
+    final result = _result;
+    if (result == null || !result.success) {
+      return;
+    }
+    final safeTitle = widget.article.title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final date = DateTime.now().toIso8601String().split('T').first;
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File(
+      '${directory.path}\\${safeTitle}_${result.targetLanguageCode}_$date.$format',
+    );
+    final escapedTitle =
+        _ArticleSectionEditorData._escapeStaticHtml(widget.article.title);
+    final escapedSection =
+        _ArticleSectionEditorData._escapeStaticHtml(widget.section.title);
+    final content = format == 'html'
+        ? '<h1>$escapedTitle</h1><p>Original language: ${result.sourceLanguageCode}<br>Translation language: ${result.targetLanguageCode}<br>Date saved: $date</p><h2>$escapedSection</h2>${result.translatedRichTextHtml}<p><strong>This is machine-translated content and may contain errors.</strong></p>'
+        : '${widget.article.title}\nOriginal language: ${result.sourceLanguageCode}\nTranslation language: ${result.targetLanguageCode}\nDate saved: $date\n\n${widget.section.title}\n${result.translatedPlainText}\n\nThis is machine-translated content and may contain errors.\n';
+    await file.writeAsString(content);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${file.path}')),
+      );
+    }
+  }
+}
+
+class _ArticleSectionEditorData {
+  _ArticleSectionEditorData({
+    required String id,
+    required String label,
+    String customTitle = '',
+    String body = '',
+    List<Map<String, dynamic>> quillDeltaJson = const <Map<String, dynamic>>[],
+  })  : id = _canonicalStaticSectionId(id),
+        label = label.trim().isNotEmpty
+            ? label
+            : _articleSectionOptions[_canonicalStaticSectionId(id)] ??
+                'Custom Section',
+        titleController = TextEditingController(text: customTitle),
+        quillController = _quillControllerFromDeltaHtmlOrText(
+          quillDeltaJson,
+          body,
+        ),
+        focusNode = FocusNode(),
+        scrollController = ScrollController(),
+        collapsed = false;
+
+  factory _ArticleSectionEditorData.fromDisplaySection(
+      _DisplayArticleSection section) {
+    return _ArticleSectionEditorData(
+      id: section.id,
+      label: section.label,
+      customTitle: section.customTitle,
+      body: section.richTextHtml.isNotEmpty
+          ? section.richTextHtml
+          : section.plainText,
+      quillDeltaJson: section.quillDeltaJson,
+    );
+  }
+
+  String id;
+  String label;
+  bool collapsed;
+  final TextEditingController titleController;
+  final QuillController quillController;
+  final FocusNode focusNode;
+  final ScrollController scrollController;
+
+  String get plainText => quillController.document.toPlainText().trim();
+
+  List<Map<String, dynamic>> get deltaJson => quillController.document
+      .toDelta()
+      .toJson()
+      .map((item) => Map<String, dynamic>.from(item as Map))
+      .toList();
+
+  String toHtml() {
+    final deltaJson = quillController.document.toDelta().toJson();
+    final converter = QuillDeltaToHtmlConverter(
+      List.castFrom<dynamic, Map<String, dynamic>>(deltaJson),
+      ConverterOptions.forEmail(),
+    );
+    return converter.convert();
+  }
+
+  void dispose() {
+    titleController.dispose();
+    quillController.dispose();
+    focusNode.dispose();
+    scrollController.dispose();
+  }
+
+  static QuillController _quillControllerFromDeltaHtmlOrText(
+    List<Map<String, dynamic>> deltaJson,
+    String value,
+  ) {
+    if (deltaJson.isNotEmpty) {
+      try {
+        return QuillController(
+          document: Document.fromJson(deltaJson),
+          selection: const TextSelection.collapsed(offset: 0),
+        );
+      } catch (_) {
+        // Fall through to HTML/text compatibility path.
+      }
+    }
+    try {
+      final content = value.trim();
+      if (content.isEmpty) {
+        return QuillController.basic();
+      }
+      final looksLikeHtml = RegExp(r'<[a-zA-Z][\s\S]*>').hasMatch(content);
+      final html = looksLikeHtml ? content : _markdownishToHtml(content);
+      final delta = HtmlToDelta().convert(html, transformTableAsEmbed: false);
+      return QuillController(
+        document: Document.fromDelta(delta),
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+    } catch (_) {
+      return QuillController(
+        document: Document()..insert(0, value),
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+    }
+  }
+
+  static String _canonicalStaticSectionId(String id) {
+    final normalized = id
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (normalized.isEmpty) {
+      return 'summary';
+    }
+    return _legacyArticleSectionIdAliases[normalized] ?? normalized;
+  }
+
+  static String _markdownishToHtml(String value) {
+    final buffer = StringBuffer();
+    for (final rawLine in value.replaceAll('\r\n', '\n').split('\n')) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        continue;
+      }
+      final heading = RegExp(r'^(#{1,3})\s+(.+)$').firstMatch(line);
+      if (heading != null) {
+        final level = heading.group(1)!.length;
+        buffer.write(
+            '<h$level>${_escapeStaticHtml(heading.group(2)!)}</h$level>');
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        buffer
+            .write('<ul><li>${_escapeStaticHtml(line.substring(2))}</li></ul>');
+      } else if (RegExp(r'^\d+\.\s+').hasMatch(line)) {
+        buffer.write(
+            '<ol><li>${_escapeStaticHtml(line.replaceFirst(RegExp(r'^\d+\.\s+'), ''))}</li></ol>');
+      } else {
+        buffer.write('<p>${_escapeStaticHtml(line)}</p>');
+      }
+    }
+    return buffer.toString();
+  }
+
+  static String _escapeStaticHtml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
 }

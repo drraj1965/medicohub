@@ -295,6 +295,21 @@ class DoctorResponseRecord(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class BlogArticleSectionInput(BaseModel):
+    id: str
+    label: str
+    customTitle: str = ""
+    order: int = 0
+    richTextHtml: str = ""
+    plainText: str = ""
+    quillDeltaJson: list[dict] = Field(default_factory=list)
+
+
+class BlogArticleSectionRecord(BlogArticleSectionInput):
+    createdAt: datetime = Field(default_factory=utc_now)
+    updatedAt: datetime = Field(default_factory=utc_now)
+
+
 class BlogArticleCreate(BaseModel):
     author_id: str
     title: str
@@ -307,6 +322,9 @@ class BlogArticleCreate(BaseModel):
     youtube_url: str | None = None
     youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] = "markdown"
+    default_language: str = "en"
+    section_order: list[str] = Field(default_factory=list)
+    sections: dict[str, BlogArticleSectionInput] = Field(default_factory=dict)
 
 
 class BlogArticleUpdate(BaseModel):
@@ -321,6 +339,9 @@ class BlogArticleUpdate(BaseModel):
     youtube_url: str | None = None
     youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] | None = None
+    default_language: str | None = None
+    section_order: list[str] | None = None
+    sections: dict[str, BlogArticleSectionInput] | None = None
 
 
 class BlogArticleCommentCreate(BaseModel):
@@ -359,6 +380,9 @@ class BlogArticleRecord(BaseModel):
     youtube_url: str | None = None
     youtube_video_id: str | None = None
     body_format: Literal["plain", "markdown"] = "markdown"
+    default_language: str = "en"
+    section_order: list[str] = Field(default_factory=list)
+    sections: dict[str, BlogArticleSectionRecord] = Field(default_factory=dict)
     like_count: int = 0
     liked_by: list[str] = Field(default_factory=list)
     comments: list[BlogArticleCommentRecord] = Field(default_factory=list)
@@ -595,6 +619,54 @@ class PaymentIntentResponse(BaseModel):
     currency: str = "AED"
     status: str = "requires_action"
     checkout_hint: str
+
+
+class TranslationRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=5000)
+    sourceLang: str = "en"
+    targetLang: str
+    contentType: str = "article"
+    medicalMode: bool = True
+    allowPaidFallback: bool = False
+    actorId: str | None = None
+
+
+class TranslationResponse(BaseModel):
+    translatedText: str
+    provider: str
+    sourceLang: str
+    targetLang: str
+    qualityWarning: str = ""
+    errorMessage: str = ""
+    cached: bool = False
+
+
+class SectionTranslationRequest(BaseModel):
+    articleId: str
+    sectionId: str
+    sourceLang: str = "en"
+    targetLang: str
+    richTextHtml: str = Field(default="", max_length=10000)
+    plainText: str = Field(default="", max_length=10000)
+    sourceUpdatedAt: str | None = None
+    contentType: str = "published_article_section"
+
+
+class SectionTranslationResponse(BaseModel):
+    success: bool
+    articleId: str
+    sectionId: str
+    sourceLang: str
+    targetLang: str
+    contentHash: str
+    translatedRichTextHtml: str = ""
+    translatedPlainText: str = ""
+    provider: str = "microsoft-azure"
+    cacheSource: Literal["local", "server", "provider", "none"] = "none"
+    warning: str = ""
+    errorCode: str = ""
+    message: str = ""
+    detailsForAdminOnly: str = ""
 
 
 class AuditEvent(BaseModel):

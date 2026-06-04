@@ -437,6 +437,61 @@ class EducationItem {
   }
 }
 
+class BlogArticleSection {
+  const BlogArticleSection({
+    required this.id,
+    required this.label,
+    required this.customTitle,
+    required this.order,
+    required this.richTextHtml,
+    required this.plainText,
+    this.quillDeltaJson = const <Map<String, dynamic>>[],
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String label;
+  final String customTitle;
+  final int order;
+  final String richTextHtml;
+  final String plainText;
+  final List<Map<String, dynamic>> quillDeltaJson;
+  final String createdAt;
+  final String updatedAt;
+
+  String get title => customTitle.trim().isNotEmpty ? customTitle : label;
+  bool get hasContent =>
+      richTextHtml.trim().isNotEmpty || plainText.trim().isNotEmpty;
+
+  factory BlogArticleSection.fromJson(Map<String, dynamic> json) {
+    return BlogArticleSection(
+      id: json['id'] as String? ?? '',
+      label: json['label'] as String? ?? 'Section',
+      customTitle: json['customTitle'] as String? ?? '',
+      order: json['order'] as int? ?? 0,
+      richTextHtml: json['richTextHtml'] as String? ?? '',
+      plainText: json['plainText'] as String? ?? '',
+      quillDeltaJson: (json['quillDeltaJson'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
+      createdAt: json['createdAt'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'customTitle': customTitle,
+        'order': order,
+        'richTextHtml': richTextHtml,
+        'plainText': plainText,
+        'quillDeltaJson': quillDeltaJson,
+      };
+}
+
 class BlogArticle {
   const BlogArticle({
     required this.id,
@@ -452,6 +507,9 @@ class BlogArticle {
     required this.youtubeUrl,
     required this.youtubeVideoId,
     required this.bodyFormat,
+    required this.defaultLanguage,
+    required this.sectionOrder,
+    required this.sections,
     required this.likeCount,
     required this.likedBy,
     required this.comments,
@@ -473,6 +531,9 @@ class BlogArticle {
   final String youtubeUrl;
   final String youtubeVideoId;
   final String bodyFormat;
+  final String defaultLanguage;
+  final List<String> sectionOrder;
+  final Map<String, BlogArticleSection> sections;
   final int likeCount;
   final List<String> likedBy;
   final List<BlogArticleComment> comments;
@@ -481,6 +542,24 @@ class BlogArticle {
   final String updatedAt;
 
   factory BlogArticle.fromJson(Map<String, dynamic> json) {
+    final rawSections = json['sections'] as Map<String, dynamic>? ?? const {};
+    final sections = rawSections.map(
+      (key, value) => MapEntry(
+        key,
+        BlogArticleSection.fromJson(value as Map<String, dynamic>),
+      ),
+    );
+    final rawSectionOrder =
+        (json['section_order'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .where((id) => id.trim().isNotEmpty)
+            .toList();
+    final sectionOrder = rawSectionOrder.isNotEmpty
+        ? rawSectionOrder
+        : (sections.values.toList()..sort((a, b) => a.order.compareTo(b.order)))
+            .map((section) => section.id)
+            .where((id) => id.trim().isNotEmpty)
+            .toList();
     return BlogArticle(
       id: json['id'] as String? ?? '',
       authorId: json['author_id'] as String? ?? '',
@@ -495,6 +574,9 @@ class BlogArticle {
       youtubeUrl: json['youtube_url'] as String? ?? '',
       youtubeVideoId: json['youtube_video_id'] as String? ?? '',
       bodyFormat: json['body_format'] as String? ?? 'markdown',
+      defaultLanguage: json['default_language'] as String? ?? 'en',
+      sectionOrder: sectionOrder,
+      sections: sections,
       likeCount: json['like_count'] as int? ?? 0,
       likedBy: (json['liked_by'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
@@ -530,6 +612,9 @@ class BlogArticle {
       youtubeUrl: youtubeUrl,
       youtubeVideoId: youtubeVideoId,
       bodyFormat: bodyFormat,
+      defaultLanguage: defaultLanguage,
+      sectionOrder: sectionOrder,
+      sections: sections,
       likeCount: likeCount ?? this.likeCount,
       likedBy: likedBy ?? this.likedBy,
       comments: comments ?? this.comments,

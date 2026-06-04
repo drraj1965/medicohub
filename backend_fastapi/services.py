@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import smtplib
+import hashlib
 from html import escape
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -26,6 +27,7 @@ try:
         BlogArticleCommentRecord,
         BlogArticleRecord,
         BlogArticleLikeRequest,
+        BlogArticleSectionRecord,
         BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
@@ -47,6 +49,10 @@ try:
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         ThreadMessageRecord,
+        SectionTranslationRequest,
+        SectionTranslationResponse,
+        TranslationRequest,
+        TranslationResponse,
         QuestionUpdateRequest,
         TitleTemplate,
         TitleTemplateCreate,
@@ -75,6 +81,7 @@ except ImportError:
         BlogArticleCommentRecord,
         BlogArticleRecord,
         BlogArticleLikeRequest,
+        BlogArticleSectionRecord,
         BlogArticleUpdate,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
@@ -96,6 +103,10 @@ except ImportError:
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         ThreadMessageRecord,
+        SectionTranslationRequest,
+        SectionTranslationResponse,
+        TranslationRequest,
+        TranslationResponse,
         QuestionUpdateRequest,
         TitleTemplate,
         TitleTemplateCreate,
@@ -140,6 +151,128 @@ class _LazyFileStorage:
 repository = _LazyRepository()
 file_storage = _LazyFileStorage()
 pdf_ingestion = PdfIngestionService()
+
+
+ARTICLE_SECTION_LABELS = {
+    "summary": "Summary",
+    "patients": "For Patients",
+    "doctors": "For Doctors",
+    "citations": "Citations / References",
+    "notes": "Additional Notes",
+    "faq": "FAQ",
+    "takeaways": "Key Takeaways",
+    "disclaimer": "Disclaimer",
+}
+
+ARTICLE_TRANSLATION_PROVIDER_VERSION = "microsoft-azure-v1"
+ARTICLE_TRANSLATION_WARNING = (
+    "Machine translation may contain errors. Please consult a doctor for medical decisions."
+)
+
+
+def _plain_from_rich_text(value: str) -> str:
+    return " ".join((value or "").replace("\r", "\n").split())
+
+
+def _content_hash(value: str) -> str:
+    normalized = " ".join((value or "").split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
+
+
+def _translation_key(
+    *,
+    article_id: str,
+    section_id: str,
+    source_lang: str,
+    target_lang: str,
+    content_hash: str,
+) -> str:
+    raw = f"{article_id}:{section_id}:{source_lang}:{target_lang}:{content_hash}:{ARTICLE_TRANSLATION_PROVIDER_VERSION}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _normalize_article_sections(
+    sections: dict | None,
+    section_order: list[str] | None,
+    *,
+    legacy_summary: str = "",
+    legacy_body: str = "",
+) -> tuple[dict[str, dict], list[str]]:
+    now = utc_now()
+    normalized: dict[str, dict] = {}
+    order: list[str] = []
+    raw_sections = sections or {}
+    requested_order = section_order or list(raw_sections.keys())
+    for index, section_id in enumerate(requested_order):
+        raw = raw_sections.get(section_id)
+        if raw is None:
+            continue
+        data = raw.model_dump() if hasattr(raw, "model_dump") else dict(raw)
+        clean_id = (data.get("id") or section_id).strip() or f"section_{index + 1}"
+        rich_text = (data.get("richTextHtml") or "").strip()
+        plain_text = (data.get("plainText") or _plain_from_rich_text(rich_text)).strip()
+        if not rich_text and not plain_text:
+            continue
+        record = BlogArticleSectionRecord(
+            id=clean_id,
+            label=(data.get("label") or ARTICLE_SECTION_LABELS.get(clean_id, "Custom Section")).strip(),
+            customTitle=(data.get("customTitle") or "").strip(),
+            order=len(order) + 1,
+            richTextHtml=rich_text or plain_text,
+            plainText=plain_text,
+            quillDeltaJson=data.get("quillDeltaJson") or [],
+            createdAt=now,
+            updatedAt=now,
+        ).model_dump(mode="json")
+        normalized[clean_id] = record
+        order.append(clean_id)
+    if normalized:
+        return normalized, order
+
+    fallback_sections: dict[str, dict] = {}
+    fallback_order: list[str] = []
+    if legacy_summary.strip():
+        fallback_sections["summary"] = BlogArticleSectionRecord(
+            id="summary",
+            label="Summary",
+            order=1,
+            richTextHtml=legacy_summary.strip(),
+            plainText=_plain_from_rich_text(legacy_summary),
+            createdAt=now,
+            updatedAt=now,
+        ).model_dump(mode="json")
+        fallback_order.append("summary")
+    if legacy_body.strip():
+        fallback_sections["body"] = BlogArticleSectionRecord(
+            id="body",
+            label="Article",
+            order=len(fallback_order) + 1,
+            richTextHtml=legacy_body.strip(),
+            plainText=_plain_from_rich_text(legacy_body),
+            createdAt=now,
+            updatedAt=now,
+        ).model_dump(mode="json")
+        fallback_order.append("body")
+    return fallback_sections, fallback_order
+
+
+def _decorate_article_sections(article: dict) -> dict:
+    sections = article.get("sections") or {}
+    order = article.get("section_order") or []
+    if sections and order:
+        return article
+    fallback_sections, fallback_order = _normalize_article_sections(
+        {},
+        [],
+        legacy_summary=article.get("summary") or "",
+        legacy_body=article.get("body") or "",
+    )
+    return {
+        **article,
+        "sections": sections or fallback_sections,
+        "section_order": order or fallback_order,
+        "default_language": article.get("default_language") or "en",
+    }
 settings = get_settings()
 NOTIFICATION_REQUEST_TIMEOUT_SECONDS = 5
 PUBLIC_APP_URL = os.getenv("MEDICOHUB_PUBLIC_APP_URL", "https://mediconverse.web.app/").rstrip("/")
@@ -1528,6 +1661,7 @@ def list_blog_articles() -> list[dict]:
     users = {user["id"]: user for user in repository.list_users()}
     decorated = []
     for article in articles:
+        article = _decorate_article_sections(article)
         author = users.get(article["author_id"])
         if article.get("youtube_url") and not article.get("youtube_video_id"):
             try:
@@ -1582,6 +1716,14 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
         raise HTTPException(status_code=403, detail="Only doctors and admins can publish articles.")
 
     youtube_url, youtube_video_id = _normalize_youtube_url(payload.youtube_url, payload.youtube_video_id)
+    sections, section_order = _normalize_article_sections(
+        payload.sections,
+        payload.section_order,
+        legacy_summary=payload.summary,
+        legacy_body=payload.body,
+    )
+    if not sections:
+        raise HTTPException(status_code=400, detail="Add at least one non-empty article section before publishing.")
     article = BlogArticleRecord(
         author_id=payload.author_id,
         title=payload.title.strip(),
@@ -1594,6 +1736,9 @@ def create_blog_article(payload: BlogArticleCreate) -> dict:
         youtube_url=youtube_url,
         youtube_video_id=youtube_video_id,
         body_format=payload.body_format,
+        default_language=payload.default_language.strip() or "en",
+        section_order=section_order,
+        sections=sections,
     ).model_dump(mode="json")
     repository.create_blog_article(article)
     emit_audit("blog_article", article["id"], "created", payload.author_id, article)
@@ -1619,6 +1764,17 @@ def update_blog_article(article_id: str, payload: BlogArticleUpdate) -> dict:
         key: value.strip() if isinstance(value, str) else value
         for key, value in payload.model_dump(exclude={"actor_id"}, exclude_none=True).items()
     }
+    if "sections" in updates or "section_order" in updates:
+        sections, section_order = _normalize_article_sections(
+            updates.get("sections", current.get("sections")),
+            updates.get("section_order", current.get("section_order")),
+            legacy_summary=updates.get("summary", current.get("summary") or ""),
+            legacy_body=updates.get("body", current.get("body") or ""),
+        )
+        if not sections:
+            raise HTTPException(status_code=400, detail="Add at least one non-empty article section before publishing.")
+        updates["sections"] = sections
+        updates["section_order"] = section_order
     if "youtube_url" in updates or "youtube_video_id" in updates:
         youtube_url, youtube_video_id = _normalize_youtube_url(
             updates.get("youtube_url"),
@@ -1747,6 +1903,155 @@ def create_payment_intent(payload: PaymentIntentRequest) -> dict:
     )
     emit_audit("payment", payment["payment_id"], "created", payload.user_id, payment)
     return payment
+
+
+def translate_text(payload: TranslationRequest) -> TranslationResponse:
+    try:
+        from .translation.translation_router import TranslationPayload, translate_payload
+    except ImportError:
+        from translation.translation_router import TranslationPayload, translate_payload  # type: ignore
+
+    result = translate_payload(
+        TranslationPayload(
+            text=payload.text,
+            source_lang=payload.sourceLang,
+            target_lang=payload.targetLang,
+            content_type=payload.contentType,
+            medical_mode=payload.medicalMode,
+            allow_paid_fallback=payload.allowPaidFallback,
+        )
+    )
+    return TranslationResponse(**result)
+
+
+def translate_article_section(payload: SectionTranslationRequest) -> SectionTranslationResponse:
+    source_lang = (payload.sourceLang or "en").strip().lower()
+    target_lang = (payload.targetLang or "en").strip().lower()
+    source_text = (payload.plainText or _plain_from_rich_text(payload.richTextHtml)).strip()
+    rich_text = (payload.richTextHtml or source_text).strip()
+    content_hash = _content_hash(rich_text or source_text)
+
+    if not source_text:
+        return SectionTranslationResponse(
+            success=False,
+            articleId=payload.articleId,
+            sectionId=payload.sectionId,
+            sourceLang=source_lang,
+            targetLang=target_lang,
+            contentHash=content_hash,
+            cacheSource="none",
+            errorCode="empty_section",
+            message="This section is empty.",
+        )
+    if source_lang == target_lang:
+        return SectionTranslationResponse(
+            success=True,
+            articleId=payload.articleId,
+            sectionId=payload.sectionId,
+            sourceLang=source_lang,
+            targetLang=target_lang,
+            contentHash=content_hash,
+            translatedRichTextHtml=rich_text,
+            translatedPlainText=source_text,
+            cacheSource="server",
+            warning=ARTICLE_TRANSLATION_WARNING,
+        )
+
+    translation_key = _translation_key(
+        article_id=payload.articleId,
+        section_id=payload.sectionId,
+        source_lang=source_lang,
+        target_lang=target_lang,
+        content_hash=content_hash,
+    )
+    cached = repository.get_article_translation(translation_key)
+    if cached:
+        return SectionTranslationResponse(
+            success=True,
+            articleId=payload.articleId,
+            sectionId=payload.sectionId,
+            sourceLang=source_lang,
+            targetLang=target_lang,
+            contentHash=content_hash,
+            translatedRichTextHtml=cached.get("translatedRichTextHtml") or "",
+            translatedPlainText=cached.get("translatedPlainText") or "",
+            provider=cached.get("provider") or "microsoft-azure",
+            cacheSource="server",
+            warning=ARTICLE_TRANSLATION_WARNING,
+        )
+
+    result = translate_text(
+        TranslationRequest(
+            text=rich_text,
+            sourceLang=source_lang,
+            targetLang=target_lang,
+            contentType="html" if rich_text.lstrip().startswith("<") else payload.contentType,
+            medicalMode=True,
+            allowPaidFallback=False,
+        )
+    )
+    if result.errorMessage:
+        return SectionTranslationResponse(
+            success=False,
+            articleId=payload.articleId,
+            sectionId=payload.sectionId,
+            sourceLang=source_lang,
+            targetLang=target_lang,
+            contentHash=content_hash,
+            provider=result.provider or "microsoft-azure",
+            cacheSource="none",
+            errorCode="provider_failed",
+            message="Could not translate now. Please try again later.",
+            detailsForAdminOnly=result.errorMessage,
+        )
+
+    now = utc_now().isoformat()
+    translated_html = result.translatedText
+    translated_plain = _plain_from_rich_text(translated_html).strip() or translated_html
+    translation_record = {
+        "articleId": payload.articleId,
+        "sectionId": payload.sectionId,
+        "sourceLang": source_lang,
+        "targetLang": target_lang,
+        "contentHash": content_hash,
+        "provider": "microsoft-azure",
+        "providerVersion": ARTICLE_TRANSLATION_PROVIDER_VERSION,
+        "translatedRichTextHtml": translated_html,
+        "translatedPlainText": translated_plain,
+        "createdAt": now,
+        "updatedAt": now,
+        "sourceUpdatedAt": payload.sourceUpdatedAt,
+        "createdBy": "system",
+        "reviewedByDoctor": False,
+    }
+    repository.save_article_translation(translation_key, translation_record)
+    emit_audit(
+        "article_translation",
+        translation_key,
+        "created",
+        "system",
+        {
+            "articleId": payload.articleId,
+            "sectionId": payload.sectionId,
+            "sourceLang": source_lang,
+            "targetLang": target_lang,
+            "provider": "microsoft-azure",
+            "characterCount": len(source_text),
+        },
+    )
+    return SectionTranslationResponse(
+        success=True,
+        articleId=payload.articleId,
+        sectionId=payload.sectionId,
+        sourceLang=source_lang,
+        targetLang=target_lang,
+        contentHash=content_hash,
+        translatedRichTextHtml=translated_html,
+        translatedPlainText=translated_plain,
+        provider="microsoft-azure",
+        cacheSource="provider",
+        warning=ARTICLE_TRANSLATION_WARNING,
+    )
 
 
 def resolve_report_pdf(pmc_id: str, article_url: str | None = None) -> dict:
