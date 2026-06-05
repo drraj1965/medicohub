@@ -29,6 +29,9 @@ try:
         BlogArticleLikeRequest,
         BlogArticleSectionRecord,
         BlogArticleUpdate,
+        CommunicationPreferencesUpdate,
+        ContentShareReport,
+        ContentShareRequest,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -59,6 +62,7 @@ try:
         User,
         UserDeleteRequest,
         UserProfileUpsertRequest,
+        UnsubscribeRequest,
         make_id,
         utc_now,
     )
@@ -83,6 +87,9 @@ except ImportError:
         BlogArticleLikeRequest,
         BlogArticleSectionRecord,
         BlogArticleUpdate,
+        CommunicationPreferencesUpdate,
+        ContentShareReport,
+        ContentShareRequest,
         DEFAULT_QUESTION_TOPICS,
         DoctorInviteCreate,
         DoctorResponseInput,
@@ -113,6 +120,7 @@ except ImportError:
         User,
         UserDeleteRequest,
         UserProfileUpsertRequest,
+        UnsubscribeRequest,
         make_id,
         utc_now,
     )
@@ -508,7 +516,50 @@ def _find_user_by_email_or_phone(
 def _serialize_user(user: dict) -> dict:
     clean = dict(user)
     clean.pop("password", None)
+    clean.setdefault("communication_preferences", _default_communication_preferences())
+    clean.setdefault("email_subscribed", True)
+    clean.setdefault("unsubscribed_at", None)
+    clean.setdefault("resubscribed_at", None)
     return clean
+
+
+def _default_communication_preferences() -> dict[str, bool]:
+    return {
+        "emailArticles": True,
+        "emailQuestions": True,
+        "emailAnswers": True,
+        "emailFollowUps": True,
+        "emailComments": True,
+        "emailAnnouncements": True,
+    }
+
+
+def _communication_preferences(user: dict) -> dict[str, bool]:
+    preferences = _default_communication_preferences()
+    raw = user.get("communication_preferences") or user.get("communicationPreferences") or {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if key in preferences:
+                preferences[key] = bool(value)
+    return preferences
+
+
+def _email_allowed(user: dict, preference_key: str) -> bool:
+    if not user.get("email_subscribed", user.get("emailSubscribed", True)):
+        return False
+    return _communication_preferences(user).get(preference_key, True)
+
+
+def _notification_preference_key(event_type: str) -> str:
+    if event_type == "question_created":
+        return "emailQuestions"
+    if event_type == "question_answered":
+        return "emailAnswers"
+    if event_type == "followup_posted":
+        return "emailFollowUps"
+    if event_type == "comment_posted":
+        return "emailComments"
+    return "emailAnnouncements"
 
 
 def _mailto_link(*, to_email: str, subject: str, body: str) -> str:
@@ -526,6 +577,32 @@ def _app_open_url() -> str:
     return PUBLIC_APP_URL or "https://mediconverse.web.app"
 
 
+def _unsubscribe_token(user_id: str, email: str) -> str:
+    secret = settings.firebase_project_id or "medicohub"
+    digest = hashlib.sha256(f"{user_id}:{_normalize_email(email)}:{secret}".encode("utf-8")).hexdigest()
+    return f"{user_id}.{digest[:24]}"
+
+
+def _verify_unsubscribe_token(token: str) -> dict | None:
+    try:
+        user_id, _ = token.split(".", 1)
+    except ValueError:
+        return None
+    user = repository.get_user(user_id)
+    if user is None:
+        return None
+    expected = _unsubscribe_token(user["id"], user.get("email", ""))
+    return user if expected == token else None
+
+
+def _manage_preferences_url(user: dict) -> str:
+    return f"{_app_open_url()}/settings?uid={quote(user['id'])}"
+
+
+def _unsubscribe_url(user: dict) -> str:
+    return f"{_app_open_url()}/unsubscribe?token={quote(_unsubscribe_token(user['id'], user.get('email', '')))}"
+
+
 def _append_open_app_footer(body: str) -> str:
     if "Open the App for the full answer" in body:
         return body
@@ -535,18 +612,39 @@ def _append_open_app_footer(body: str) -> str:
     )
 
 
-def _queue_firebase_trigger_email(*, to_email: str, subject: str, body: str) -> bool:
+def _append_email_footer(*, body: str, user: dict | None) -> str:
+    if user is None:
+        return body
+    return (
+        f"{body.rstrip()}\n\n"
+        "Manage email preferences:\n"
+        f"{_manage_preferences_url(user)}\n\n"
+        "Unsubscribe from MedicoHub email notifications:\n"
+        f"{_unsubscribe_url(user)}"
+    )
+
+
+def _queue_firebase_trigger_email(
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+    user: dict | None = None,
+    metadata: dict | None = None,
+) -> bool:
     try:
-        escaped_body = escape(body).replace("\n", "<br>")
+        body_with_footer = _append_email_footer(body=body, user=user)
+        escaped_body = escape(body_with_footer).replace("\n", "<br>")
         repository.create_mail_message(
             {
                 "id": make_id("mail"),
                 "to": [to_email],
                 "message": {
                     "subject": subject,
-                    "text": body,
+                    "text": body_with_footer,
                     "html": f"<div>{escaped_body}</div>",
                 },
+                **(metadata or {}),
                 "created_at": utc_now().isoformat(),
                 "source": "medicohub-backend",
             }
@@ -567,6 +665,21 @@ def _queue_notification_pair(
     recipient_phone = recipient.get("phone_number")
     recipient_name = recipient.get("display_name", "MedicoHub user")
     if recipient_email:
+        preference_key = _notification_preference_key(event_type)
+        if not _email_allowed(recipient, preference_key):
+            repository.create_notification(
+                NotificationEvent(
+                    event_type=event_type,  # type: ignore[arg-type]
+                    channel="email",
+                    recipient_user_id=recipient["id"],
+                    recipient_name=recipient_name,
+                    recipient_email=recipient_email,
+                    subject=subject,
+                    body=body,
+                    status="skipped",
+                ).model_dump(mode="json")
+            )
+            return
         email_sent = False
         firebase_email_queued = False
         try:
@@ -578,6 +691,13 @@ def _queue_notification_pair(
                 to_email=recipient_email,
                 subject=subject,
                 body=body,
+                user=recipient,
+                metadata={
+                    "type": event_type,
+                    "toUid": recipient["id"],
+                    "toEmail": recipient_email,
+                    "status": "pending",
+                },
             )
         repository.create_notification(
             NotificationEvent(
@@ -1106,6 +1226,332 @@ def list_users() -> list[dict]:
     return [_serialize_user(user) for user in repository.list_users()]
 
 
+def update_communication_preferences(user_id: str, payload: CommunicationPreferencesUpdate) -> dict:
+    user = repository.get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor["id"] != user_id and actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the account owner or an admin can update preferences.")
+    preferences = _communication_preferences(user)
+    for key, value in payload.communication_preferences.items():
+        if key in preferences:
+            preferences[key] = bool(value)
+    now = utc_now().isoformat()
+    updates = {
+        **user,
+        "communication_preferences": preferences,
+        "email_subscribed": payload.email_subscribed,
+        "updated_at": now,
+    }
+    if payload.email_subscribed and not user.get("email_subscribed", True):
+        updates["resubscribed_at"] = now
+    if not payload.email_subscribed and user.get("email_subscribed", True):
+        updates["unsubscribed_at"] = now
+    repository.upsert_user(updates)
+    emit_audit("user", user_id, "communication_preferences_updated", payload.actor_id, _serialize_user(updates))
+    return _serialize_user(updates)
+
+
+def unsubscribe_email(payload: UnsubscribeRequest) -> dict:
+    user = _verify_unsubscribe_token(payload.token)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid unsubscribe token.")
+    now = utc_now().isoformat()
+    updated = {
+        **user,
+        "email_subscribed": False,
+        "unsubscribed_at": now,
+        "updated_at": now,
+    }
+    repository.upsert_user(updated)
+    emit_audit("user", user["id"], "unsubscribed", user["id"], {"email": user.get("email")})
+    return {"success": True, "message": "You have been unsubscribed from MedicoHub email notifications."}
+
+
+def _content_url(content_type: str, content_id: str, content: dict) -> str:
+    base = _app_open_url().rstrip("/")
+    if content_type == "article":
+        slug = content.get("slug") or content.get("id") or content_id
+        return f"{base}/articles/{quote(str(slug))}"
+    if content_type in {"question", "answer"}:
+        question_id = content.get("question_id") or content.get("id") or content_id
+        return f"{base}/questions/{quote(str(question_id))}"
+    if content_type == "video":
+        return f"{base}/videos/{quote(content_id)}"
+    if content_type == "livestream":
+        return f"{base}/live/{quote(content_id)}"
+    return base
+
+
+def _resolve_share_content(content_type: str, content_id: str) -> dict:
+    if content_type == "article":
+        article = next((item for item in repository.list_blog_articles() if item.get("id") == content_id), None)
+        if article is None:
+            raise HTTPException(status_code=404, detail="Article not found.")
+        return {
+            "title": article.get("title", "MedicoHub article"),
+            "summary": article.get("summary") or article.get("body", "")[:700],
+            "content": article,
+        }
+    if content_type == "question":
+        question = next((item for item in repository.list_questions() if item.get("id") == content_id), None)
+        if question is None:
+            raise HTTPException(status_code=404, detail="Question not found.")
+        return {
+            "title": question.get("title", "MedicoHub question"),
+            "summary": question.get("ai_summary") or question.get("body", "")[:700],
+            "content": question,
+        }
+    if content_type == "answer":
+        for question in repository.list_questions():
+            for response in question.get("responses", []):
+                if response.get("id") == content_id:
+                    return {
+                        "title": f"Answer: {question.get('title', 'MedicoHub question')}",
+                        "summary": response.get("full_text") or response.get("key_points", ""),
+                        "content": {**response, "question_id": question.get("id")},
+                    }
+        raise HTTPException(status_code=404, detail="Answer not found.")
+    raise HTTPException(status_code=400, detail="This content type is not shareable yet.")
+
+
+def _share_preference_key(content_type: str) -> str:
+    if content_type == "article":
+        return "emailArticles"
+    if content_type == "question":
+        return "emailQuestions"
+    if content_type == "answer":
+        return "emailAnswers"
+    if content_type == "livestream":
+        return "emailAnnouncements"
+    return "emailAnnouncements"
+
+
+def _email_subject(content_type: str, title: str) -> str:
+    label = {
+        "article": "Article",
+        "question": "Question",
+        "answer": "Answer",
+        "announcement": "Announcement",
+        "livestream": "Livestream",
+    }.get(content_type, "MedicoHub")
+    return f"[{label}] {title[:120]}"
+
+
+def _email_body(*, user: dict, content_type: str, title: str, summary: str, content_url: str, custom_message: str) -> str:
+    first_name = (user.get("display_name") or "there").split(" ")[0]
+    intro = {
+        "article": "A MedicoHub article may interest you.",
+        "question": "A MedicoHub question may interest you.",
+        "answer": "A MedicoHub answer may interest you.",
+    }.get(content_type, "A MedicoHub update may interest you.")
+    parts = [
+        f"Hello {first_name},",
+        "",
+        intro,
+        "",
+        f"Title: {title}",
+    ]
+    if custom_message.strip():
+        parts.extend(["", "Message from MedicoHub:", custom_message.strip()])
+    if summary.strip():
+        parts.extend(["", "Summary:", summary.strip()[:1200]])
+    parts.extend(["", "Click below to read:", content_url, "", "Regards,", "MedicoHub Team"])
+    return "\n".join(parts)
+
+
+def _check_share_rate_limits(actor_id: str, recipient_count: int, content_type: str, content_id: str) -> None:
+    now = utc_now()
+    one_hour_ago = (now.replace(tzinfo=timezone.utc).timestamp() - 3600)
+    today = now.date().isoformat()
+    recent_campaigns = []
+    daily_recipients = 0
+    for campaign in repository.list_email_campaigns():
+        if campaign.get("created_by") != actor_id:
+            continue
+        created = datetime.fromisoformat(str(campaign.get("created_at")).replace("Z", "+00:00"))
+        if created.timestamp() >= one_hour_ago:
+            recent_campaigns.append(campaign)
+        if str(campaign.get("created_at", "")).startswith(today):
+            daily_recipients += int(campaign.get("queued_count") or campaign.get("total_recipients") or 0)
+    if len(recent_campaigns) >= 10:
+        raise HTTPException(status_code=429, detail="Campaign hourly limit reached.")
+    if recipient_count > 1000:
+        raise HTTPException(status_code=429, detail="Recipient limit per campaign is 1000.")
+    if daily_recipients + recipient_count > 3000:
+        raise HTTPException(status_code=429, detail="Daily recipient limit reached.")
+
+
+def _recent_delivery_exists(user_id: str, content_type: str, content_id: str) -> bool:
+    cutoff = utc_now().timestamp() - 24 * 3600
+    for delivery in repository.list_email_deliveries():
+        if (
+            delivery.get("to_uid") != user_id
+            and delivery.get("toUid") != user_id
+        ):
+            continue
+        if delivery.get("content_type") != content_type or delivery.get("content_id") != content_id:
+            continue
+        raw = delivery.get("queued_at") or delivery.get("created_at") or ""
+        try:
+            created = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if created.timestamp() >= cutoff:
+            return True
+    return False
+
+
+def share_content(payload: ContentShareRequest) -> ContentShareReport:
+    actor = repository.get_user(payload.actor_id)
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found.")
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can share content by email.")
+    if not payload.send_email:
+        raise HTTPException(status_code=400, detail="Only email sharing is implemented.")
+    unique_recipient_ids = list(dict.fromkeys(payload.recipient_ids))
+    if not unique_recipient_ids:
+        raise HTTPException(status_code=400, detail="Select at least one recipient.")
+    _check_share_rate_limits(payload.actor_id, len(unique_recipient_ids), payload.content_type, payload.content_id)
+    resolved = _resolve_share_content(payload.content_type, payload.content_id)
+    title = resolved["title"]
+    summary = resolved["summary"]
+    content = resolved["content"]
+    content_url = _content_url(payload.content_type, payload.content_id, content)
+    subject = _email_subject(payload.content_type, title)
+    preference_key = _share_preference_key(payload.content_type)
+    campaign_id = make_id("emc")
+    now = utc_now().isoformat()
+    skipped_unsubscribed = 0
+    skipped_preference = 0
+    skipped_missing_email = 0
+    duplicate_skipped = 0
+    queued = 0
+    seen_pairs = set()
+    campaign = {
+        "id": campaign_id,
+        "campaignId": campaign_id,
+        "content_type": payload.content_type,
+        "content_id": payload.content_id,
+        "created_by": payload.actor_id,
+        "created_at": now,
+        "custom_message": payload.custom_message,
+        "total_recipients": len(unique_recipient_ids),
+        "queued_count": 0,
+        "sent_count": 0,
+        "failed_count": 0,
+        "skipped_unsubscribed_count": 0,
+        "subject": subject,
+    }
+    repository.create_email_campaign(campaign)
+    for user_id in unique_recipient_ids:
+        user = repository.get_user(user_id)
+        if user is None:
+            skipped_missing_email += 1
+            continue
+        email = user.get("email", "").strip()
+        if not email:
+            skipped_missing_email += 1
+            continue
+        if not user.get("email_subscribed", user.get("emailSubscribed", True)):
+            skipped_unsubscribed += 1
+            continue
+        if not _communication_preferences(user).get(preference_key, True):
+            skipped_preference += 1
+            continue
+        pair = (user_id, payload.content_type, payload.content_id)
+        if pair in seen_pairs:
+            duplicate_skipped += 1
+            continue
+        seen_pairs.add(pair)
+        if _recent_delivery_exists(user_id, payload.content_type, payload.content_id):
+            duplicate_skipped += 1
+            continue
+        delivery_id = make_id("emd")
+        body = _email_body(
+            user=user,
+            content_type=payload.content_type,
+            title=title,
+            summary=summary,
+            content_url=content_url,
+            custom_message=payload.custom_message,
+        )
+        queued_ok = _queue_firebase_trigger_email(
+            to_email=email,
+            subject=subject,
+            body=body,
+            user=user,
+            metadata={
+                "type": f"{payload.content_type}_share",
+                "toUid": user_id,
+                "toEmail": email,
+                "contentType": payload.content_type,
+                "contentId": payload.content_id,
+                "contentUrl": content_url,
+                "campaignId": campaign_id,
+                "deliveryId": delivery_id,
+                "status": "pending",
+            },
+        )
+        status = "queued" if queued_ok else "failed"
+        if queued_ok:
+            queued += 1
+        repository.create_email_delivery(
+            {
+                "id": delivery_id,
+                "campaign_id": campaign_id,
+                "campaignId": campaign_id,
+                "to_uid": user_id,
+                "toUid": user_id,
+                "to_email": email,
+                "toEmail": email,
+                "content_type": payload.content_type,
+                "content_id": payload.content_id,
+                "status": status,
+                "queued_at": now,
+                "sent_at": None,
+                "failure_reason": None if queued_ok else "Could not create mail queue document.",
+            }
+        )
+    repository.update_email_campaign(
+        campaign_id,
+        {
+            "queued_count": queued,
+            "failed_count": len(unique_recipient_ids) - queued - skipped_unsubscribed - skipped_preference - skipped_missing_email - duplicate_skipped,
+            "skipped_unsubscribed_count": skipped_unsubscribed,
+            "skipped_preference_count": skipped_preference,
+            "skipped_missing_email_count": skipped_missing_email,
+            "duplicate_skipped_count": duplicate_skipped,
+        },
+    )
+    emit_audit("email_campaign", campaign_id, "created", payload.actor_id, {
+        "content_type": payload.content_type,
+        "content_id": payload.content_id,
+        "queued_count": queued,
+    })
+    return ContentShareReport(
+        campaign_id=campaign_id,
+        content_type=payload.content_type,
+        content_id=payload.content_id,
+        content_url=content_url,
+        subject=subject,
+        total_requested=len(unique_recipient_ids),
+        queued_count=queued,
+        skipped_unsubscribed_count=skipped_unsubscribed,
+        skipped_preference_count=skipped_preference,
+        skipped_missing_email_count=skipped_missing_email,
+        duplicate_skipped_count=duplicate_skipped,
+    )
+
+
+def list_email_campaigns() -> list[dict]:
+    return sorted(repository.list_email_campaigns(), key=lambda item: item.get("created_at", ""), reverse=True)
+
+
 def lookup_user_by_email(email: str) -> dict | None:
     user = _find_user_by_email_or_phone(email, None)
     if user is None:
@@ -1256,6 +1702,11 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         "can_moderate_content": can_moderate_content,
         "invited_by": invited_by,
         "created_at": existing_created_at,
+        "communication_preferences": _communication_preferences(existing or {}),
+        "email_subscribed": (existing or {}).get("email_subscribed", True),
+        "unsubscribed_at": (existing or {}).get("unsubscribed_at"),
+        "resubscribed_at": (existing or {}).get("resubscribed_at"),
+        "updated_at": utc_now(),
     }
     if existing_consent is not None:
         user_payload["consent"] = existing_consent

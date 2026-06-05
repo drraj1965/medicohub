@@ -111,8 +111,22 @@ class User(BaseModel):
     can_manage_doctors: bool = False
     can_moderate_content: bool = False
     invited_by: str | None = None
+    communication_preferences: dict[str, bool] = Field(
+        default_factory=lambda: {
+            "emailArticles": True,
+            "emailQuestions": True,
+            "emailAnswers": True,
+            "emailFollowUps": True,
+            "emailComments": True,
+            "emailAnnouncements": True,
+        }
+    )
+    email_subscribed: bool = True
+    unsubscribed_at: datetime | None = None
+    resubscribed_at: datetime | None = None
     consent: ConsentRecord = Field(default_factory=ConsentRecord)
     created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class AuthRequest(BaseModel):
@@ -163,6 +177,40 @@ class UserProfileUpsertRequest(BaseModel):
     verified: bool = False
     languages: list[str] = Field(default_factory=lambda: ["English"])
     specialties: list[str] = Field(default_factory=list)
+
+
+class CommunicationPreferencesUpdate(BaseModel):
+    actor_id: str
+    email_subscribed: bool = True
+    communication_preferences: dict[str, bool] = Field(default_factory=dict)
+
+
+class ContentShareRequest(BaseModel):
+    actor_id: str
+    content_type: Literal["article", "question", "answer", "video", "livestream"]
+    content_id: str
+    recipient_ids: list[str] = Field(default_factory=list)
+    custom_message: str = ""
+    send_email: bool = True
+
+
+class ContentShareReport(BaseModel):
+    campaign_id: str
+    content_type: str
+    content_id: str
+    content_url: str
+    subject: str
+    total_requested: int
+    queued_count: int
+    skipped_unsubscribed_count: int
+    skipped_preference_count: int
+    skipped_missing_email_count: int
+    duplicate_skipped_count: int
+    failed_count: int = 0
+
+
+class UnsubscribeRequest(BaseModel):
+    token: str
 
 
 class UserDeleteRequest(BaseModel):
@@ -393,7 +441,15 @@ class BlogArticleRecord(BaseModel):
 
 class NotificationEvent(BaseModel):
     id: str = Field(default_factory=lambda: make_id("ntf"))
-    event_type: Literal["question_created", "question_answered"]
+    event_type: Literal[
+        "question_created",
+        "question_answered",
+        "followup_posted",
+        "comment_posted",
+        "article_share",
+        "question_share",
+        "answer_share",
+    ]
     channel: Literal["email", "whatsapp"]
     recipient_user_id: str
     recipient_name: str
@@ -402,7 +458,7 @@ class NotificationEvent(BaseModel):
     subject: str
     body: str
     deep_link: str | None = None
-    status: Literal["queued", "preview_ready", "sent"] = "preview_ready"
+    status: Literal["queued", "preview_ready", "sent", "skipped", "failed"] = "preview_ready"
     created_at: datetime = Field(default_factory=utc_now)
 
 

@@ -107,6 +107,12 @@ class Repository(ABC):
     def like_blog_article(self, article_id: str, actor_id: str) -> dict[str, Any] | None: ...
 
     @abstractmethod
+    def get_article_translation(self, translation_key: str) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def save_article_translation(self, translation_key: str, translation: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
     def list_notifications(self) -> list[dict[str, Any]]: ...
 
     @abstractmethod
@@ -114,6 +120,24 @@ class Repository(ABC):
 
     @abstractmethod
     def create_mail_message(self, message: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def list_mail_messages(self) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def list_email_campaigns(self) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def create_email_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def update_email_campaign(self, campaign_id: str, updates: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def list_email_deliveries(self) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def create_email_delivery(self, delivery: dict[str, Any]) -> dict[str, Any]: ...
 
     @abstractmethod
     def list_otp_requests(self) -> list[dict[str, Any]]: ...
@@ -386,6 +410,15 @@ class LocalJsonRepository(Repository):
                 return article
         return None
 
+    def get_article_translation(self, translation_key: str) -> dict[str, Any] | None:
+        return self._db().setdefault("article_translations", {}).get(translation_key)
+
+    def save_article_translation(self, translation_key: str, translation: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db.setdefault("article_translations", {})[translation_key] = translation
+        save_db(db)
+        return translation
+
     def list_notifications(self) -> list[dict[str, Any]]:
         return self._db()["notifications"]
 
@@ -400,6 +433,36 @@ class LocalJsonRepository(Repository):
         db.setdefault("mail", []).append(message)
         save_db(db)
         return message
+
+    def list_mail_messages(self) -> list[dict[str, Any]]:
+        return self._db().setdefault("mail", [])
+
+    def list_email_campaigns(self) -> list[dict[str, Any]]:
+        return self._db().setdefault("email_campaigns", [])
+
+    def create_email_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db.setdefault("email_campaigns", []).append(campaign)
+        save_db(db)
+        return campaign
+
+    def update_email_campaign(self, campaign_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        db = self._db()
+        for campaign in db.setdefault("email_campaigns", []):
+            if campaign.get("id") == campaign_id:
+                campaign.update(updates)
+                save_db(db)
+                return campaign
+        return None
+
+    def list_email_deliveries(self) -> list[dict[str, Any]]:
+        return self._db().setdefault("email_deliveries", [])
+
+    def create_email_delivery(self, delivery: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db.setdefault("email_deliveries", []).append(delivery)
+        save_db(db)
+        return delivery
 
     def list_otp_requests(self) -> list[dict[str, Any]]:
         return self._db()["otp_requests"]
@@ -740,6 +803,16 @@ class FirestoreRepository(Repository):
         ref.set(article)
         return article
 
+    def get_article_translation(self, translation_key: str) -> dict[str, Any] | None:
+        snap = self._collection("articleTranslations").document(translation_key).get()
+        if not snap.exists:
+            return None
+        return self._decode(snap.to_dict())
+
+    def save_article_translation(self, translation_key: str, translation: dict[str, Any]) -> dict[str, Any]:
+        self._collection("articleTranslations").document(translation_key).set(translation)
+        return translation
+
     def list_notifications(self) -> list[dict[str, Any]]:
         return [self._decode(doc.to_dict()) for doc in self._collection("notifications").stream()]
 
@@ -750,6 +823,33 @@ class FirestoreRepository(Repository):
     def create_mail_message(self, message: dict[str, Any]) -> dict[str, Any]:
         self._collection("mail").document(message["id"]).set(message)
         return message
+
+    def list_mail_messages(self) -> list[dict[str, Any]]:
+        return [self._decode(doc.to_dict()) for doc in self._collection("mail").stream()]
+
+    def list_email_campaigns(self) -> list[dict[str, Any]]:
+        return [self._decode(doc.to_dict()) for doc in self._collection("emailCampaigns").stream()]
+
+    def create_email_campaign(self, campaign: dict[str, Any]) -> dict[str, Any]:
+        self._collection("emailCampaigns").document(campaign["id"]).set(campaign)
+        return campaign
+
+    def update_email_campaign(self, campaign_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        ref = self._collection("emailCampaigns").document(campaign_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        current = self._decode(snap.to_dict())
+        current.update(updates)
+        ref.set(current)
+        return current
+
+    def list_email_deliveries(self) -> list[dict[str, Any]]:
+        return [self._decode(doc.to_dict()) for doc in self._collection("emailDeliveries").stream()]
+
+    def create_email_delivery(self, delivery: dict[str, Any]) -> dict[str, Any]:
+        self._collection("emailDeliveries").document(delivery["id"]).set(delivery)
+        return delivery
 
     def list_otp_requests(self) -> list[dict[str, Any]]:
         return [self._decode(doc.to_dict()) for doc in self._collection("otp_requests").stream()]

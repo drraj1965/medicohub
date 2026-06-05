@@ -35,7 +35,10 @@ class AppApiService {
     if (Platform.isMacOS) {
       return _publicBackendUrl;
     }
-    return 'http://127.0.0.1:8012';
+    if (Platform.isWindows) {
+      return _publicBackendUrl;
+    }
+    return _publicBackendUrl;
   }
 
   Future<List<ForumQuestion>> fetchQuestions() async {
@@ -58,6 +61,15 @@ class AppApiService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<Map<String, dynamic>> fetchTranslationUsage() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/admin/translation-usage'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'translation usage');
+    final decoded = jsonDecode(response.body);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
   }
 
   Future<void> waitUntilReady({
@@ -131,6 +143,64 @@ class AppApiService {
         .map((item) =>
             DoctorDirectoryEntry.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<UserProfile>> fetchUsers() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/admin/users'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'users');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => UserProfile.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ContentShareReport> shareContentByEmail({
+    required String actorId,
+    required String contentType,
+    required String contentId,
+    required List<String> recipientIds,
+    required String customMessage,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/share-content'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'content_type': contentType,
+            'content_id': contentId,
+            'recipient_ids': recipientIds,
+            'custom_message': customMessage,
+            'send_email': true,
+          }),
+        )
+        .timeout(_questionRequestTimeout);
+    _ensureSuccess(response, 'share content');
+    return ContentShareReport.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<UserProfile> updateCommunicationPreferences({
+    required String userId,
+    required String actorId,
+    required bool emailSubscribed,
+    required Map<String, bool> communicationPreferences,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/users/$userId/communication-preferences'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'actor_id': actorId,
+        'email_subscribed': emailSubscribed,
+        'communication_preferences': communicationPreferences,
+      }),
+    );
+    _ensureSuccess(response, 'communication preferences');
+    return UserProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<UserProfile> loginAsDemo(String email) async {
@@ -703,6 +773,8 @@ class AppApiService {
     String imageUrl = '',
     String youtubeUrl = '',
     String youtubeVideoId = '',
+    List<String> sectionOrder = const [],
+    Map<String, BlogArticleSection> sections = const {},
   }) async {
     final response = await _client.post(
       Uri.parse('$_baseUrl/blog/articles'),
@@ -719,6 +791,9 @@ class AppApiService {
         'youtube_url': youtubeUrl,
         'youtube_video_id': youtubeVideoId,
         'body_format': 'markdown',
+        'default_language': 'en',
+        'section_order': sectionOrder,
+        'sections': sections.map((key, value) => MapEntry(key, value.toJson())),
       }),
     );
     _ensureSuccess(response, 'create blog article');
@@ -739,6 +814,8 @@ class AppApiService {
     String imageUrl = '',
     String youtubeUrl = '',
     String youtubeVideoId = '',
+    List<String> sectionOrder = const [],
+    Map<String, BlogArticleSection> sections = const {},
   }) async {
     final response = await _client.patch(
       Uri.parse('$_baseUrl/blog/articles/$articleId'),
@@ -755,6 +832,9 @@ class AppApiService {
         'youtube_url': youtubeUrl,
         'youtube_video_id': youtubeVideoId,
         'body_format': 'markdown',
+        'default_language': 'en',
+        'section_order': sectionOrder,
+        'sections': sections.map((key, value) => MapEntry(key, value.toJson())),
       }),
     );
     _ensureSuccess(response, 'update blog article');

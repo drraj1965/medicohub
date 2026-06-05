@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, File, Form, UploadFile
+from collections import defaultdict, deque
+from time import monotonic
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
@@ -15,6 +18,9 @@ try:
         BlogArticleCommentCreate,
         BlogArticleLikeRequest,
         BlogArticleUpdate,
+        CommunicationPreferencesUpdate,
+        ContentShareReport,
+        ContentShareRequest,
         DoctorInviteCreate,
         DoctorResponseInput,
         NotificationSettingsUpdate,
@@ -27,9 +33,14 @@ try:
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
+        SectionTranslationRequest,
+        SectionTranslationResponse,
         TitleTemplateCreate,
+        TranslationRequest,
+        TranslationResponse,
         UserDeleteRequest,
         UserProfileUpsertRequest,
+        UnsubscribeRequest,
     )
     from .services import (
         add_response,
@@ -47,6 +58,7 @@ try:
         create_question,
         get_app_settings,
         get_notification_settings,
+        list_email_campaigns,
         create_title_template,
         get_user_profile,
         list_education,
@@ -64,6 +76,10 @@ try:
         request_otp,
         resolve_report_pdf,
         revoke_attachment,
+        translate_article_section,
+        translate_text,
+        share_content,
+        unsubscribe_email,
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
@@ -71,6 +87,7 @@ try:
         update_blog_article,
         like_blog_article,
         update_app_settings,
+        update_communication_preferences,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -89,6 +106,9 @@ except ImportError:
         BlogArticleCommentCreate,
         BlogArticleLikeRequest,
         BlogArticleUpdate,
+        CommunicationPreferencesUpdate,
+        ContentShareReport,
+        ContentShareRequest,
         DoctorInviteCreate,
         DoctorResponseInput,
         NotificationSettingsUpdate,
@@ -101,9 +121,14 @@ except ImportError:
         ThreadMessageInput,
         ThreadMessageModerationRequest,
         QuestionUpdateRequest,
+        SectionTranslationRequest,
+        SectionTranslationResponse,
         TitleTemplateCreate,
+        TranslationRequest,
+        TranslationResponse,
         UserDeleteRequest,
         UserProfileUpsertRequest,
+        UnsubscribeRequest,
     )
     from services import (  # type: ignore
         add_response,
@@ -121,6 +146,7 @@ except ImportError:
         create_question,
         get_app_settings,
         get_notification_settings,
+        list_email_campaigns,
         create_title_template,
         get_user_profile,
         list_education,
@@ -138,6 +164,10 @@ except ImportError:
         request_otp,
         resolve_report_pdf,
         revoke_attachment,
+        translate_article_section,
+        translate_text,
+        share_content,
+        unsubscribe_email,
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
@@ -145,6 +175,7 @@ except ImportError:
         update_blog_article,
         like_blog_article,
         update_app_settings,
+        update_communication_preferences,
         update_notification_settings,
         update_question,
         upsert_user_profile,
@@ -166,6 +197,23 @@ if should_seed_demo_data():
     seed_if_needed()
 
 
+_translation_hits: defaultdict[str, deque[float]] = defaultdict(deque)
+
+
+def _check_translation_rate_limit(request: Request) -> None:
+    client = request.client.host if request.client else "unknown"
+    now = monotonic()
+    hits = _translation_hits[client]
+    while hits and now - hits[0] > 60:
+        hits.popleft()
+    if len(hits) >= 45:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many translation requests. Please try again shortly.",
+        )
+    hits.append(now)
+
+
 @app.get("/")
 def root() -> dict:
     return {
@@ -178,6 +226,18 @@ def root() -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "MedicoHub Backend"}
+
+
+@app.post("/api/translate", response_model=TranslationResponse)
+def translate(payload: TranslationRequest, request: Request) -> TranslationResponse:
+    _check_translation_rate_limit(request)
+    return translate_text(payload)
+
+
+@app.post("/api/translate-section", response_model=SectionTranslationResponse)
+def translate_section(payload: SectionTranslationRequest, request: Request) -> SectionTranslationResponse:
+    _check_translation_rate_limit(request)
+    return translate_article_section(payload)
 
 
 @app.post("/auth/login", response_model=AuthResponse)
@@ -199,6 +259,21 @@ def otp_verify(payload: OtpVerifyInput) -> dict:
 @app.get("/auth/test-accounts")
 def test_accounts() -> list[dict]:
     return list_users()
+
+
+@app.get("/api/admin/users")
+def admin_users() -> list[dict]:
+    return list_users()
+
+
+@app.post("/api/admin/share-content", response_model=ContentShareReport)
+def admin_share_content(payload: ContentShareRequest) -> ContentShareReport:
+    return share_content(payload)
+
+
+@app.get("/api/admin/email-campaigns")
+def admin_email_campaigns() -> list[dict]:
+    return list_email_campaigns()
 
 
 @app.get("/doctors")
@@ -233,6 +308,16 @@ def get_user(user_id: str) -> dict:
 @app.post("/users/profile")
 def upsert_user(payload: UserProfileUpsertRequest) -> dict:
     return upsert_user_profile(payload)
+
+
+@app.post("/users/{user_id}/communication-preferences")
+def save_communication_preferences(user_id: str, payload: CommunicationPreferencesUpdate) -> dict:
+    return update_communication_preferences(user_id, payload)
+
+
+@app.post("/api/unsubscribe")
+def unsubscribe(payload: UnsubscribeRequest) -> dict:
+    return unsubscribe_email(payload)
 
 
 @app.delete("/users/{user_id}")
@@ -419,3 +504,33 @@ def thread_summary(question_id: str) -> dict:
 @app.get("/audit/logs")
 def audit_logs(limit: int = 100) -> list[dict]:
     return read_audit(limit=limit)
+
+
+@app.get("/api/admin/translation-usage")
+def translation_usage(limit: int = 1000) -> dict:
+    events = [
+        event
+        for event in read_audit(limit=limit)
+        if event.get("entity_type") == "article_translation"
+    ]
+    total_characters = 0
+    languages: dict[str, int] = {}
+    providers: dict[str, int] = {}
+    section_calls: dict[str, int] = {}
+    for event in events:
+        payload = event.get("payload") or {}
+        total_characters += int(payload.get("characterCount") or 0)
+        pair = f"{payload.get('sourceLang', '')}->{payload.get('targetLang', '')}"
+        languages[pair] = languages.get(pair, 0) + 1
+        provider = payload.get("provider") or "unknown"
+        providers[provider] = providers.get(provider, 0) + 1
+        section_id = payload.get("sectionId") or "unknown"
+        section_calls[section_id] = section_calls.get(section_id, 0) + 1
+    return {
+        "providerCalls": len(events),
+        "charactersTranslated": total_characters,
+        "languagePairs": languages,
+        "providers": providers,
+        "sections": section_calls,
+        "note": "Provider calls are counted from audit events emitted only after Azure generates a new translation. Server and local cache avoidance is reported in the reader UI.",
+    }

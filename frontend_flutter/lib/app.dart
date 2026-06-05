@@ -62,6 +62,30 @@ T? safeDropdownValue<T>(T? currentValue, List<DropdownMenuItem<T>> items) {
   return null;
 }
 
+Future<bool> _launchExternalLink(String url) async {
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) {
+    return false;
+  }
+  final candidate = trimmed.contains(':') ? trimmed : 'https://$trimmed';
+  final uri = Uri.tryParse(candidate);
+  if (uri == null || uri.scheme.isEmpty) {
+    return false;
+  }
+  return launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+HtmlWidget _linkedHtmlWidget(
+  String html, {
+  TextStyle? textStyle,
+}) {
+  return HtmlWidget(
+    html,
+    onTapUrl: _launchExternalLink,
+    textStyle: textStyle,
+  );
+}
+
 List<DropdownMenuItem<String>> _languageDropdownItemsExcluding(
     String sourceLanguageCode) {
   final seen = <String>{};
@@ -1192,6 +1216,15 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _shareArticle(BlogArticle article) async {
+    if (_activeUser?.isAdmin == true) {
+      await _openAdminShareDialog(
+        contentType: 'article',
+        contentId: article.id,
+        title: article.title,
+        summary: article.summary,
+      );
+      return;
+    }
     final videoUrl = article.youtubeUrl.isNotEmpty
         ? article.youtubeUrl
         : article.youtubeVideoId.isNotEmpty
@@ -1209,6 +1242,43 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         text: text,
       ),
     );
+  }
+
+  Future<void> _openAdminShareDialog({
+    required String contentType,
+    required String contentId,
+    required String title,
+    required String summary,
+  }) async {
+    final admin = _activeUser;
+    if (admin == null || !admin.isAdmin) {
+      return;
+    }
+    try {
+      final users = await _api.fetchUsers();
+      if (!mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _AdminShareEmailDialog(
+          api: _api,
+          admin: admin,
+          users: users,
+          contentType: contentType,
+          contentId: contentId,
+          title: title,
+          summary: summary,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load share recipients: $error')),
+      );
+    }
   }
 
   String _normalizedYouTubeUrl(String videoId) {
@@ -1252,15 +1322,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   Widget _buildArticleHtml(BuildContext context, String value) {
     final html = value.trim().isEmpty ? '<p></p>' : value;
-    return HtmlWidget(
+    return _linkedHtmlWidget(
       html,
-      onTapUrl: (url) async {
-        final uri = Uri.tryParse(url);
-        if (uri == null) {
-          return false;
-        }
-        return launchUrl(uri, mode: LaunchMode.externalApplication);
-      },
       textStyle: Theme.of(context).textTheme.bodyMedium,
     );
   }
@@ -3959,6 +4022,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 canDeleteResponses: _canDeleteDoctorResponses(question),
                 onDeleteResponses: (responses) =>
                     _deleteDoctorResponses(question, responses),
+                onShare: _activeUser?.isAdmin == true
+                    ? () => _openAdminShareDialog(
+                          contentType: 'question',
+                          contentId: question.id,
+                          title: question.title,
+                          summary: question.aiSummary.isNotEmpty
+                              ? question.aiSummary
+                              : question.body,
+                        )
+                    : null,
+                onShareResponse: _activeUser?.isAdmin == true
+                    ? (response) => _openAdminShareDialog(
+                          contentType: 'answer',
+                          contentId: response.id,
+                          title: question.title,
+                          summary: response.fullText,
+                        )
+                    : null,
               ),
             ),
             for (final campaign in relatedCampaign)
@@ -4045,6 +4126,24 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                             : null,
                         onAddFollowUp: _canAddFollowUp(question)
                             ? () => _openThreadMessageDialog(question)
+                            : null,
+                        onShare: _activeUser?.isAdmin == true
+                            ? () => _openAdminShareDialog(
+                                  contentType: 'question',
+                                  contentId: question.id,
+                                  title: question.title,
+                                  summary: question.aiSummary.isNotEmpty
+                                      ? question.aiSummary
+                                      : question.body,
+                                )
+                            : null,
+                        onShareResponse: _activeUser?.isAdmin == true
+                            ? (response) => _openAdminShareDialog(
+                                  contentType: 'answer',
+                                  contentId: response.id,
+                                  title: question.title,
+                                  summary: response.fullText,
+                                )
                             : null,
                         canModerateMessage: (message) =>
                             _canModerateThreadMessage(question, message),
@@ -5231,6 +5330,18 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                 ),
                 const SizedBox(height: 20),
                 Text('Settings', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.mark_email_read_outlined),
+                  title: const Text('Email notifications'),
+                  subtitle: Text(user.emailSubscribed
+                      ? 'Subscribed to MedicoHub email updates that match your preferences.'
+                      : 'Unsubscribed. Turn this on to receive MedicoHub emails again.'),
+                  value: user.emailSubscribed,
+                  onChanged: (value) =>
+                      unawaited(_updateMyEmailSubscription(value)),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<MedicoHubThemePreset>(
                   initialValue: widget.themeConfig.preset,
@@ -9058,6 +9169,39 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
   }
 
+  Future<void> _updateMyEmailSubscription(bool subscribed) async {
+    final user = _activeUser;
+    if (user == null) {
+      return;
+    }
+    try {
+      final updated = await _api.updateCommunicationPreferences(
+        userId: user.id,
+        actorId: user.id,
+        emailSubscribed: subscribed,
+        communicationPreferences: user.communicationPreferences,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() => _activeUser = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(subscribed
+              ? 'Email notifications enabled.'
+              : 'Email notifications disabled.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update email preference: $error')),
+      );
+    }
+  }
+
   Future<void> _moderateThreadMessage(
     ForumQuestion question,
     ThreadMessage message,
@@ -9959,6 +10103,8 @@ class _QuestionCard extends StatelessWidget {
     this.onDelete,
     this.onRespond,
     this.onAddFollowUp,
+    this.onShare,
+    this.onShareResponse,
     this.canModerateMessage,
     this.onModerateMessage,
     this.canDeleteResponses = false,
@@ -9972,6 +10118,8 @@ class _QuestionCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onRespond;
   final VoidCallback? onAddFollowUp;
+  final VoidCallback? onShare;
+  final ValueChanged<DoctorResponse>? onShareResponse;
   final bool Function(ThreadMessage message)? canModerateMessage;
   final void Function(ThreadMessage message, String moderationState)?
       onModerateMessage;
@@ -10098,6 +10246,9 @@ class _QuestionCard extends StatelessWidget {
                 onDelete: canDeleteResponses && onDeleteResponses != null
                     ? () => onDeleteResponses!([response])
                     : null,
+                onShare: onShareResponse == null
+                    ? null
+                    : () => onShareResponse!(response),
               ),
             ),
           ],
@@ -10116,6 +10267,12 @@ class _QuestionCard extends StatelessWidget {
         FilledButton(onPressed: onRespond, child: const Text('Respond')),
       if (onAddFollowUp != null)
         OutlinedButton(onPressed: onAddFollowUp, child: Text(followUpLabel)),
+      if (onShare != null)
+        OutlinedButton.icon(
+          onPressed: onShare,
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share'),
+        ),
       if (onEdit != null)
         OutlinedButton(onPressed: onEdit, child: const Text('Edit')),
       if (onTogglePublic != null)
@@ -10280,10 +10437,12 @@ class _DoctorResponseTile extends StatelessWidget {
   const _DoctorResponseTile({
     required this.response,
     this.onDelete,
+    this.onShare,
   });
 
   final DoctorResponse response;
   final VoidCallback? onDelete;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -10310,6 +10469,12 @@ class _DoctorResponseTile extends StatelessWidget {
                   tooltip: 'Delete response',
                   onPressed: onDelete,
                   icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              if (onShare != null)
+                IconButton(
+                  tooltip: 'Share response',
+                  onPressed: onShare,
+                  icon: const Icon(Icons.share_outlined),
                 ),
             ],
           ),
@@ -10388,8 +10553,12 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
   late List<DoctorDirectoryEntry> _doctors = List.of(widget.initialDoctors);
   late List<BlogArticle> _articles = List.of(widget.initialArticles);
   late List<EducationItem> _education = List.of(widget.initialEducation);
+  List<UserProfile> _users = const <UserProfile>[];
   late AppSettings? _settings = widget.initialSettings;
   Map<String, dynamic> _translationUsage = const <String, dynamic>{};
+  String _userSearch = '';
+  String _userRoleFilter = 'all';
+  String _userSort = 'name';
   bool _loading = false;
   String? _error;
 
@@ -10415,6 +10584,7 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
       final doctors = await widget.api.fetchDoctors();
       final articles = await widget.api.fetchBlogArticles();
       final education = await widget.api.fetchEducation();
+      final users = await widget.api.fetchUsers();
       final settings = await widget.api.fetchAppSettings();
       final translationUsage = await widget.api.fetchTranslationUsage();
       if (!mounted) {
@@ -10425,6 +10595,7 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
         _doctors = doctors;
         _articles = articles;
         _education = education;
+        _users = users;
         _settings = settings;
         _translationUsage = translationUsage;
       });
@@ -10448,6 +10619,39 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
     callback();
   }
 
+  List<UserProfile> _visibleUsers() {
+    final query = _userSearch.trim().toLowerCase();
+    final users = _users.where((user) {
+      final roleMatches =
+          _userRoleFilter == 'all' || user.role == _userRoleFilter;
+      final textMatches = query.isEmpty ||
+          user.displayName.toLowerCase().contains(query) ||
+          user.email.toLowerCase().contains(query) ||
+          (user.phoneNumber ?? '').toLowerCase().contains(query);
+      return roleMatches && textMatches;
+    }).toList();
+    users.sort((a, b) {
+      switch (_userSort) {
+        case 'email':
+          return a.email.toLowerCase().compareTo(b.email.toLowerCase());
+        case 'role':
+          return a.role.compareTo(b.role);
+        case 'verified':
+          return b.verified.toString().compareTo(a.verified.toString());
+        case 'created':
+          return b.createdAt.compareTo(a.createdAt);
+        case 'last_login':
+          return b.lastLoginAt.compareTo(a.lastLoginAt);
+        case 'name':
+        default:
+          return a.displayName.toLowerCase().compareTo(
+                b.displayName.toLowerCase(),
+              );
+      }
+    });
+    return users;
+  }
+
   @override
   Widget build(BuildContext context) {
     final openQuestions = _questions
@@ -10463,6 +10667,7 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
         (_translationUsage['providerCalls'] ?? 0).toString();
     final translationCharacters =
         (_translationUsage['charactersTranslated'] ?? 0).toString();
+    final visibleUsers = _visibleUsers();
     final latestQuestions = List<ForumQuestion>.of(_questions)
       ..sort((a, b) => _sortMoment(b).compareTo(_sortMoment(a)));
     final latestArticles = List<BlogArticle>.of(_articles)
@@ -10511,6 +10716,13 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
               runSpacing: 12,
               children: [
                 _AdminMetricCard(
+                  label: 'Users',
+                  value: _users.length.toString(),
+                  detail:
+                      '${_users.where((user) => user.verified).length} verified',
+                  icon: Icons.people_alt_outlined,
+                ),
+                _AdminMetricCard(
                   label: 'Questions',
                   value: _questions.length.toString(),
                   detail: '$openQuestions open • $publicQuestions public',
@@ -10550,6 +10762,24 @@ class _AdminDataConsolePageState extends State<AdminDataConsolePage> {
             ),
             const SizedBox(height: 16),
             _AdminTranslationUsageCard(usage: _translationUsage),
+            const SizedBox(height: 16),
+            _AdminUsersCard(
+              users: visibleUsers,
+              search: _userSearch,
+              roleFilter: _userRoleFilter,
+              sort: _userSort,
+              onSearchChanged: (value) => setState(() => _userSearch = value),
+              onRoleFilterChanged: (value) {
+                if (value != null) {
+                  setState(() => _userRoleFilter = value);
+                }
+              },
+              onSortChanged: (value) {
+                if (value != null) {
+                  setState(() => _userSort = value);
+                }
+              },
+            ),
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -10709,6 +10939,430 @@ class _AdminMetricCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _AdminUsersCard extends StatelessWidget {
+  const _AdminUsersCard({
+    required this.users,
+    required this.search,
+    required this.roleFilter,
+    required this.sort,
+    required this.onSearchChanged,
+    required this.onRoleFilterChanged,
+    required this.onSortChanged,
+  });
+
+  final List<UserProfile> users;
+  final String search;
+  final String roleFilter;
+  final String sort;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String?> onRoleFilterChanged;
+  final ValueChanged<String?> onSortChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final roleItems = const <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: 'all', child: Text('All roles')),
+      DropdownMenuItem(value: 'patient', child: Text('Patients')),
+      DropdownMenuItem(value: 'doctor', child: Text('Doctors')),
+      DropdownMenuItem(value: 'admin', child: Text('Admins')),
+    ];
+    final sortItems = const <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: 'name', child: Text('Name')),
+      DropdownMenuItem(value: 'email', child: Text('Email')),
+      DropdownMenuItem(value: 'role', child: Text('Role')),
+      DropdownMenuItem(value: 'verified', child: Text('Verified first')),
+      DropdownMenuItem(value: 'created', child: Text('Created date')),
+      DropdownMenuItem(value: 'last_login', child: Text('Last login')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.people_alt_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Users',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 280,
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search_rounded),
+                      labelText: 'Search users',
+                      hintText: 'Name, email, or phone',
+                    ),
+                    onChanged: onSearchChanged,
+                  ),
+                ),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    initialValue:
+                        safeDropdownValue<String>(roleFilter, roleItems),
+                    decoration: const InputDecoration(labelText: 'Role'),
+                    items: roleItems,
+                    onChanged: onRoleFilterChanged,
+                  ),
+                ),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: safeDropdownValue<String>(sort, sortItems),
+                    decoration: const InputDecoration(labelText: 'Sort by'),
+                    items: sortItems,
+                    onChanged: onSortChanged,
+                  ),
+                ),
+                Chip(label: Text('${users.length} shown')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (users.isEmpty)
+              const Text('No users match the current filters.')
+            else
+              ...users.take(30).map((user) {
+                final title = user.displayName.trim().isEmpty
+                    ? user.email
+                    : user.displayName;
+                final languageText = user.languages.isEmpty
+                    ? 'No language set'
+                    : user.languages.join(', ');
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Icon(
+                      user.isAdmin
+                          ? Icons.admin_panel_settings_outlined
+                          : user.isDoctor
+                              ? Icons.medical_services_outlined
+                              : Icons.person_outline_rounded,
+                    ),
+                  ),
+                  title: Text(title),
+                  subtitle: Text(
+                    [
+                      user.email,
+                      user.emailSubscribed ? 'Subscribed' : 'Unsubscribed',
+                      if ((user.phoneNumber ?? '').isNotEmpty)
+                        user.phoneNumber!,
+                      if (user.createdAt.isNotEmpty)
+                        'Created ${_formatQuestionTimestamp(user.createdAt)}',
+                      if (user.lastLoginAt.isNotEmpty)
+                        'Last login ${_formatQuestionTimestamp(user.lastLoginAt)}',
+                      languageText,
+                    ].join(' • '),
+                  ),
+                  trailing: Wrap(
+                    spacing: 6,
+                    children: [
+                      Chip(label: Text(user.role)),
+                      Chip(
+                          label: Text(user.emailSubscribed
+                              ? 'Subscribed'
+                              : 'Opted out')),
+                      if (user.verified) const Chip(label: Text('Verified')),
+                    ],
+                  ),
+                );
+              }),
+            if (users.length > 30) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Showing first 30 matches. Use search or filters to narrow the list.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminShareEmailDialog extends StatefulWidget {
+  const _AdminShareEmailDialog({
+    required this.api,
+    required this.admin,
+    required this.users,
+    required this.contentType,
+    required this.contentId,
+    required this.title,
+    required this.summary,
+  });
+
+  final AppApiService api;
+  final UserProfile admin;
+  final List<UserProfile> users;
+  final String contentType;
+  final String contentId;
+  final String title;
+  final String summary;
+
+  @override
+  State<_AdminShareEmailDialog> createState() => _AdminShareEmailDialogState();
+}
+
+class _AdminShareEmailDialogState extends State<_AdminShareEmailDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
+  final Set<String> _selectedIds = <String>{};
+  String _roleFilter = 'all';
+  bool _verifiedOnly = false;
+  bool _subscribedOnly = true;
+  bool _sending = false;
+  ContentShareReport? _report;
+  String? _error;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  List<UserProfile> get _filteredUsers {
+    final query = _searchController.text.trim().toLowerCase();
+    return widget.users.where((user) {
+      if (_roleFilter != 'all' && user.role != _roleFilter) {
+        return false;
+      }
+      if (_verifiedOnly && !user.verified) {
+        return false;
+      }
+      if (_subscribedOnly && !user.emailSubscribed) {
+        return false;
+      }
+      if (user.email.trim().isEmpty) {
+        return false;
+      }
+      if (query.isEmpty) {
+        return true;
+      }
+      return user.displayName.toLowerCase().contains(query) ||
+          user.email.toLowerCase().contains(query);
+    }).toList()
+      ..sort((a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filteredUsers;
+    return AlertDialog(
+      title: Text('Email ${widget.contentType}'),
+      content: SizedBox(
+        width: 720,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.title,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 6),
+              Text(
+                widget.summary.isEmpty
+                    ? 'No summary is available.'
+                    : widget.summary,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _messageController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Custom message',
+                  hintText: 'Optional note from the MedicoHub team',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 230,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search_rounded),
+                        labelText: 'Search recipients',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  DropdownButton<String>(
+                    value: _roleFilter,
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('All users')),
+                      DropdownMenuItem(
+                          value: 'patient', child: Text('Patients')),
+                      DropdownMenuItem(value: 'doctor', child: Text('Doctors')),
+                      DropdownMenuItem(value: 'admin', child: Text('Admins')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _roleFilter = value);
+                      }
+                    },
+                  ),
+                  FilterChip(
+                    label: const Text('Verified only'),
+                    selected: _verifiedOnly,
+                    onSelected: (value) =>
+                        setState(() => _verifiedOnly = value),
+                  ),
+                  FilterChip(
+                    label: const Text('Subscribed only'),
+                    selected: _subscribedOnly,
+                    onSelected: (value) =>
+                        setState(() => _subscribedOnly = value),
+                  ),
+                  OutlinedButton(
+                    onPressed: filtered.isEmpty
+                        ? null
+                        : () => setState(() {
+                              _selectedIds
+                                ..clear()
+                                ..addAll(filtered.map((user) => user.id));
+                            }),
+                    child: const Text('Select filtered'),
+                  ),
+                  TextButton(
+                    onPressed: _selectedIds.isEmpty
+                        ? null
+                        : () => setState(_selectedIds.clear),
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                  '${_selectedIds.length} selected • ${filtered.length} shown'),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: filtered.map((user) {
+                    final selected = _selectedIds.contains(user.id);
+                    return CheckboxListTile(
+                      value: selected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedIds.add(user.id);
+                          } else {
+                            _selectedIds.remove(user.id);
+                          }
+                        });
+                      },
+                      title: Text(user.displayName.isEmpty
+                          ? user.email
+                          : user.displayName),
+                      subtitle: Text(
+                        '${user.email} • ${user.role} • ${user.emailSubscribed ? 'subscribed' : 'unsubscribed'}',
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+              if (_report != null) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(label: Text('Queued: ${_report!.queuedCount}')),
+                    Chip(
+                        label: Text(
+                            'Skipped unsubscribed: ${_report!.skippedUnsubscribedCount}')),
+                    Chip(
+                        label: Text(
+                            'Skipped preferences: ${_report!.skippedPreferenceCount}')),
+                    Chip(label: Text('Failed: ${_report!.failedCount}')),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _sending ? null : () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+        FilledButton.icon(
+          onPressed: _sending || _selectedIds.isEmpty ? null : _send,
+          icon: _sending
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.email_outlined),
+          label: Text(_sending ? 'Queueing...' : 'Send Email'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _send() async {
+    setState(() {
+      _sending = true;
+      _error = null;
+      _report = null;
+    });
+    try {
+      final report = await widget.api.shareContentByEmail(
+        actorId: widget.admin.id,
+        contentType: widget.contentType,
+        contentId: widget.contentId,
+        recipientIds: _selectedIds.toList(),
+        customMessage: _messageController.text.trim(),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() => _report = report);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _error = 'Could not queue campaign: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _sending = false);
+      }
+    }
   }
 }
 
@@ -11194,7 +11848,9 @@ class _ArticleBulkTranslationPanelState
                 if (_results[section.id]?.success == true) ...[
                   Text(section.title,
                       style: Theme.of(context).textTheme.titleSmall),
-                  HtmlWidget(_results[section.id]!.translatedRichTextHtml),
+                  _linkedHtmlWidget(
+                    _results[section.id]!.translatedRichTextHtml,
+                  ),
                   const SizedBox(height: 8),
                 ],
             ],
@@ -11465,7 +12121,7 @@ class _ArticleSectionTranslationControlsState
                     ),
               ),
               const SizedBox(height: 8),
-              HtmlWidget(result.translatedRichTextHtml),
+              _linkedHtmlWidget(result.translatedRichTextHtml),
             ],
             if (result != null && !result.success) ...[
               const SizedBox(height: 8),

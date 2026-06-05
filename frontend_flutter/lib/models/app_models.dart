@@ -13,6 +13,11 @@ class UserProfile {
     this.doctorStatus = 'not_applicable',
     this.canManageDoctors = false,
     this.canModerateContent = false,
+    this.communicationPreferences = const <String, bool>{},
+    this.emailSubscribed = true,
+    this.createdAt = '',
+    this.updatedAt = '',
+    this.lastLoginAt = '',
   });
 
   final String id;
@@ -28,6 +33,11 @@ class UserProfile {
   final String doctorStatus;
   final bool canManageDoctors;
   final bool canModerateContent;
+  final Map<String, bool> communicationPreferences;
+  final bool emailSubscribed;
+  final String createdAt;
+  final String updatedAt;
+  final String lastLoginAt;
 
   bool get isAdmin => role == 'admin';
   bool get isDoctor => role == 'doctor' || role == 'admin';
@@ -52,6 +62,16 @@ class UserProfile {
       doctorStatus: json['doctor_status'] as String? ?? 'not_applicable',
       canManageDoctors: json['can_manage_doctors'] as bool? ?? false,
       canModerateContent: json['can_moderate_content'] as bool? ?? false,
+      communicationPreferences: ((json['communication_preferences'] ??
+                  json['communicationPreferences']) as Map<String, dynamic>? ??
+              const <String, dynamic>{})
+          .map((key, value) => MapEntry(key, value == true)),
+      emailSubscribed:
+          (json['email_subscribed'] ?? json['emailSubscribed']) as bool? ??
+              true,
+      createdAt: json['created_at'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
+      lastLoginAt: json['last_login_at'] as String? ?? '',
     );
   }
 
@@ -110,6 +130,54 @@ class DoctorDirectoryEntry {
       specialties: (json['specialties'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+    );
+  }
+}
+
+class ContentShareReport {
+  const ContentShareReport({
+    required this.campaignId,
+    required this.contentType,
+    required this.contentId,
+    required this.contentUrl,
+    required this.subject,
+    required this.totalRequested,
+    required this.queuedCount,
+    required this.skippedUnsubscribedCount,
+    required this.skippedPreferenceCount,
+    required this.skippedMissingEmailCount,
+    required this.duplicateSkippedCount,
+    required this.failedCount,
+  });
+
+  final String campaignId;
+  final String contentType;
+  final String contentId;
+  final String contentUrl;
+  final String subject;
+  final int totalRequested;
+  final int queuedCount;
+  final int skippedUnsubscribedCount;
+  final int skippedPreferenceCount;
+  final int skippedMissingEmailCount;
+  final int duplicateSkippedCount;
+  final int failedCount;
+
+  factory ContentShareReport.fromJson(Map<String, dynamic> json) {
+    return ContentShareReport(
+      campaignId: json['campaign_id'] as String? ?? '',
+      contentType: json['content_type'] as String? ?? '',
+      contentId: json['content_id'] as String? ?? '',
+      contentUrl: json['content_url'] as String? ?? '',
+      subject: json['subject'] as String? ?? '',
+      totalRequested: json['total_requested'] as int? ?? 0,
+      queuedCount: json['queued_count'] as int? ?? 0,
+      skippedUnsubscribedCount: json['skipped_unsubscribed_count'] as int? ?? 0,
+      skippedPreferenceCount: json['skipped_preference_count'] as int? ?? 0,
+      skippedMissingEmailCount:
+          json['skipped_missing_email_count'] as int? ?? 0,
+      duplicateSkippedCount: json['duplicate_skipped_count'] as int? ?? 0,
+      failedCount: json['failed_count'] as int? ?? 0,
     );
   }
 }

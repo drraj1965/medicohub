@@ -27,6 +27,9 @@ def ensure_data_files() -> None:
                     "payments": [],
                     "title_templates": [],
                     "blog_articles": [],
+                    "article_translations": {},
+                    "email_campaigns": [],
+                    "email_deliveries": [],
                     "notifications": [],
                     "otp_requests": [],
                     "notification_settings": {},
@@ -53,6 +56,9 @@ def load_db() -> dict[str, Any]:
         "payments",
         "title_templates",
         "blog_articles",
+        "article_translations",
+        "email_campaigns",
+        "email_deliveries",
         "notifications",
         "otp_requests",
         "notification_settings",
@@ -60,7 +66,7 @@ def load_db() -> dict[str, Any]:
         "app_settings",
     ]:
         if key not in db:
-            db[key] = {} if key in {"notification_settings", "app_settings"} else []
+            db[key] = {} if key in {"notification_settings", "app_settings", "article_translations"} else []
             changed = True
     if changed:
         save_db(db)
