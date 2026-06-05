@@ -36,5 +36,24 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
+if(MSVC)
+  # Firebase's Windows C++ SDK may reference STL helper symbols that are only
+  # present in the newest installed MSVC runtime libraries.
+  file(GLOB _MSVC_RUNTIME_LIBRARY_DIRS
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/lib/x64"
+    "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/lib/x64"
+  )
+  list(SORT _MSVC_RUNTIME_LIBRARY_DIRS)
+  list(REVERSE _MSVC_RUNTIME_LIBRARY_DIRS)
+
+  foreach(_MSVC_RUNTIME_LIBRARY_DIR IN LISTS _MSVC_RUNTIME_LIBRARY_DIRS)
+    if(EXISTS "${_MSVC_RUNTIME_LIBRARY_DIR}/msvcprtd.lib")
+      target_link_directories(${BINARY_NAME}
+        BEFORE PRIVATE "${_MSVC_RUNTIME_LIBRARY_DIR}")
+      break()
+    endif()
+  endforeach()
+endif()
+
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

@@ -13,6 +13,7 @@ These iOS basics are already prepared in this repo:
 
 - Flutter iOS project exists in `frontend_flutter/ios`
 - iOS bundle identifier is set to `com.aster.medichub`
+- Apple Team ID is known: `853V9K56Z8`
 - iOS test bundle identifier is set to `com.aster.medichub.RunnerTests`
 - iOS permissions are already added in:
   - `frontend_flutter/ios/Runner/Info.plist`
@@ -253,6 +254,10 @@ This is the natural stopping point:
 - metadata and Firebase file plan are known
 - backend/public API is known
 - feature scope for first iOS beta is defined
+
+For the practical submission draft and first Mac session order, also use:
+
+- `docs/app-store-connect-submission-pack.md`
 
 At this point, the next step would be:
 

@@ -3,10 +3,15 @@
 This project is now structurally ready for iPhone and iPad packaging, but the
 actual iOS build and upload must happen on a Mac with Xcode.
 
+For the detailed Apple submission pack, also see:
+
+- `docs/app-store-connect-submission-pack.md`
+
 ## What is already prepared
 
 - iOS folder exists in `frontend_flutter/ios`
 - bundle identifier is set to `com.aster.medichub`
+- Apple Team ID is known: `853V9K56Z8`
 - iPhone and iPad orientations are enabled
 - microphone, camera, and photo-library permission text is set in
   `frontend_flutter/ios/Runner/Info.plist`

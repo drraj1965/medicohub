@@ -61,21 +61,44 @@ if(MSVC AND TARGET flutter_secure_storage_windows_plugin)
   # Some Build Tools installs expose ATL/MFC headers and libs outside the paths
   # generated for flutter_secure_storage_windows. Add the available toolchain
   # paths explicitly so Windows builds do not fail on atlstr.h/atls.lib.
-  file(GLOB _ATL_MFC_INCLUDE_DIRS
-    "$ENV{VCToolsInstallDir}/atlmfc/include"
+  set(_MSVC_TOOLSET_DIR "")
+  get_filename_component(_MSVC_TOOLSET_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  get_filename_component(_MSVC_TOOLSET_HOST_DIR "${_MSVC_TOOLSET_BIN_DIR}" DIRECTORY)
+  get_filename_component(_MSVC_TOOLSET_BIN_ROOT "${_MSVC_TOOLSET_HOST_DIR}" DIRECTORY)
+  get_filename_component(_MSVC_TOOLSET_DIR "${_MSVC_TOOLSET_BIN_ROOT}" DIRECTORY)
+
+  set(_ATL_MFC_INCLUDE_CANDIDATE_DIRS "")
+  if(_MSVC_TOOLSET_DIR)
+    list(APPEND _ATL_MFC_INCLUDE_CANDIDATE_DIRS "${_MSVC_TOOLSET_DIR}/atlmfc/include")
+  endif()
+  file(GLOB _ATL_MFC_GLOB_INCLUDE_DIRS
     "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/include"
     "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/include"
     "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/include"
   )
-  if(_ATL_MFC_INCLUDE_DIRS)
-    list(GET _ATL_MFC_INCLUDE_DIRS 0 _ATL_MFC_INCLUDE_DIR)
+  list(SORT _ATL_MFC_GLOB_INCLUDE_DIRS)
+  list(REVERSE _ATL_MFC_GLOB_INCLUDE_DIRS)
+  list(APPEND _ATL_MFC_INCLUDE_CANDIDATE_DIRS ${_ATL_MFC_GLOB_INCLUDE_DIRS})
+
+  set(_ATL_MFC_VALID_INCLUDE_DIRS "")
+  foreach(_ATL_MFC_INCLUDE_DIR IN LISTS _ATL_MFC_INCLUDE_CANDIDATE_DIRS)
+    if(EXISTS "${_ATL_MFC_INCLUDE_DIR}/atlstr.h")
+      list(APPEND _ATL_MFC_VALID_INCLUDE_DIRS "${_ATL_MFC_INCLUDE_DIR}")
+    endif()
+  endforeach()
+
+  if(_ATL_MFC_VALID_INCLUDE_DIRS)
+    list(GET _ATL_MFC_VALID_INCLUDE_DIRS 0 _ATL_MFC_INCLUDE_DIR)
     target_include_directories(flutter_secure_storage_windows_plugin
       PRIVATE "${_ATL_MFC_INCLUDE_DIR}")
   endif()
 
-  file(GLOB _ATL_MFC_LIBRARY_DIRS
-    "$ENV{VCToolsInstallDir}/atlmfc/lib/x64"
-    "$ENV{VCToolsInstallDir}/atlmfc/lib/spectre/x64"
+  set(_ATL_MFC_LIBRARY_CANDIDATE_DIRS "")
+  if(_MSVC_TOOLSET_DIR)
+    list(APPEND _ATL_MFC_LIBRARY_CANDIDATE_DIRS "${_MSVC_TOOLSET_DIR}/atlmfc/lib/x64")
+    list(APPEND _ATL_MFC_LIBRARY_CANDIDATE_DIRS "${_MSVC_TOOLSET_DIR}/atlmfc/lib/spectre/x64")
+  endif()
+  file(GLOB _ATL_MFC_GLOB_LIBRARY_DIRS
     "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/lib/x64"
     "$ENV{VCINSTALLDIR}/Tools/MSVC/*/atlmfc/lib/spectre/x64"
     "C:/Program Files (x86)/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/x64"
@@ -83,8 +106,19 @@ if(MSVC AND TARGET flutter_secure_storage_windows_plugin)
     "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/x64"
     "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/atlmfc/lib/spectre/x64"
   )
-  if(_ATL_MFC_LIBRARY_DIRS)
-    list(GET _ATL_MFC_LIBRARY_DIRS 0 _ATL_MFC_LIBRARY_DIR)
+  list(SORT _ATL_MFC_GLOB_LIBRARY_DIRS)
+  list(REVERSE _ATL_MFC_GLOB_LIBRARY_DIRS)
+  list(APPEND _ATL_MFC_LIBRARY_CANDIDATE_DIRS ${_ATL_MFC_GLOB_LIBRARY_DIRS})
+
+  set(_ATL_MFC_VALID_LIBRARY_DIRS "")
+  foreach(_ATL_MFC_LIBRARY_DIR IN LISTS _ATL_MFC_LIBRARY_CANDIDATE_DIRS)
+    if(EXISTS "${_ATL_MFC_LIBRARY_DIR}/atls.lib")
+      list(APPEND _ATL_MFC_VALID_LIBRARY_DIRS "${_ATL_MFC_LIBRARY_DIR}")
+    endif()
+  endforeach()
+
+  if(_ATL_MFC_VALID_LIBRARY_DIRS)
+    list(GET _ATL_MFC_VALID_LIBRARY_DIRS 0 _ATL_MFC_LIBRARY_DIR)
     target_link_directories(flutter_secure_storage_windows_plugin
       PRIVATE "${_ATL_MFC_LIBRARY_DIR}")
   endif()

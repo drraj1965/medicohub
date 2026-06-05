@@ -1,23 +1,101 @@
 {
-    "name": "medicohub",
-    "short_name": "medicohub",
-    "start_url": ".",
+    "name": "MedicoHub Connect",
+    "short_name": "MedicoHub Connect",
+    "description": "Educational doctor-patient communication, community questions, and health learning support. Not for emergencies.",
+    "id": "/",
+    "start_url": "./",
+    "scope": "./",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "orientation": "any",
+    "background_color": "#F5FAF7",
+    "theme_color": "#0E7C70",
+    "categories": ["medical", "education", "health"],
+    "lang": "en",
+    "dir": "ltr",
     "prefer_related_applications": false,
+    "launch_handler": {
+        "client_mode": "focus-existing"
+    },
+    "shortcuts": [
+        {
+            "name": "Open MedicoHub",
+            "short_name": "Home",
+            "description": "Open the MedicoHub Connect app home page.",
+            "url": "./",
+            "icons": [
+                {
+                    "src": "icons/Icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        },
+        {
+            "name": "Privacy Policy",
+            "short_name": "Privacy",
+            "description": "Read the MedicoHub Connect privacy policy.",
+            "url": "./privacy.html",
+            "icons": [
+                {
+                    "src": "icons/Icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        },
+        {
+            "name": "Support",
+            "short_name": "Support",
+            "description": "Open MedicoHub Connect support information.",
+            "url": "./support.html",
+            "icons": [
+                {
+                    "src": "icons/Icon-192.png",
+                    "sizes": "192x192"
+                }
+            ]
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "store-screenshots/signin.jpg",
+            "sizes": "1242x2688",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "Sign in to MedicoHub Connect"
+        },
+        {
+            "src": "store-screenshots/home.jpg",
+            "sizes": "1242x2688",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "MedicoHub Connect home dashboard"
+        },
+        {
+            "src": "store-screenshots/ask.jpg",
+            "sizes": "1242x2688",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "Ask a doctor a clear educational question"
+        },
+        {
+            "src": "store-screenshots/questions.jpg",
+            "sizes": "1242x2688",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "Question history and educational replies"
+        }
+    ],
     "icons": [
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "icons/Icon-512.png",
             "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "icons/Icon-maskable-192.png",

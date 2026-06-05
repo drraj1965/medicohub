@@ -7,7 +7,7 @@ FLUTTER_DIR="$REPO_ROOT/frontend_flutter"
 ARCHIVE_PATH="$FLUTTER_DIR/build/ios/archive/Runner.xcarchive"
 EXPORT_PATH="$FLUTTER_DIR/build/ios/ipa"
 BUILD_NAME="${BUILD_NAME:-1.3.24}"
-BUILD_NUMBER="${BUILD_NUMBER:-31}"
+BUILD_NUMBER="${BUILD_NUMBER:-32}"
 
 echo "== MedicoHub iOS App Store Connect Release =="
 echo "This script must be run on macOS with Xcode installed."
@@ -24,6 +24,7 @@ cd "$FLUTTER_DIR"
 flutter --version
 flutter doctor -v
 flutter clean
+rm -rf build/ios/archive build/ios/ipa
 flutter pub get
 flutter analyze
 python3 - <<PY
