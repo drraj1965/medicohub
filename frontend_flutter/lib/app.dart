@@ -51,6 +51,21 @@ const Map<String, String> _legacyArticleSectionIdAliases = <String, String>{
   'references': 'citations',
 };
 
+const String _releaseGitCommit = String.fromEnvironment(
+  'MEDICOHUB_GIT_COMMIT',
+  defaultValue: 'local',
+);
+const String _releaseBuildNumber = String.fromEnvironment(
+  'MEDICOHUB_BUILD_NUMBER',
+  defaultValue: '33',
+);
+const String _releaseBackendUrl = String.fromEnvironment(
+  'MEDICOHUB_API_BASE_URL',
+  defaultValue: 'https://medicohub-backend.fly.dev',
+);
+const String _releaseTranslateSectionEndpoint = '/api/translate-section';
+const bool _releaseTranslationModuleEnabled = true;
+
 T? safeDropdownValue<T>(T? currentValue, List<DropdownMenuItem<T>> items) {
   final values = items.map((item) => item.value).whereType<T>().toList();
   if (currentValue == null) {
@@ -2610,6 +2625,20 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                     user == null
                         ? 'Sign in to ask questions, follow thread updates, and explore multilingual education.'
                         : 'Signed in as ${user.displayName}. Use the side menu to move between questions, education, settings, and your dashboard tools.',
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Build features',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    'translationModule: ${_releaseTranslationModuleEnabled ? 'enabled' : 'disabled'}\n'
+                    'translateSectionEndpoint: $_releaseTranslateSectionEndpoint\n'
+                    'gitCommit: $_releaseGitCommit\n'
+                    'buildNumber: $_releaseBuildNumber\n'
+                    'backendUrl: $_releaseBackendUrl',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),

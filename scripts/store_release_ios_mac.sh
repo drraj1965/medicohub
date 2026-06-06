@@ -6,8 +6,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FLUTTER_DIR="$REPO_ROOT/frontend_flutter"
 ARCHIVE_PATH="$FLUTTER_DIR/build/ios/archive/Runner.xcarchive"
 EXPORT_PATH="$FLUTTER_DIR/build/ios/ipa"
-BUILD_NAME="${BUILD_NAME:-1.3.24}"
-BUILD_NUMBER="${BUILD_NUMBER:-32}"
+BUILD_NAME="${BUILD_NAME:-1.3.25}"
+BUILD_NUMBER="${BUILD_NUMBER:-33}"
 
 echo "== MedicoHub iOS App Store Connect Release =="
 echo "This script must be run on macOS with Xcode installed."
@@ -21,6 +21,7 @@ if [ ! -f "$FLUTTER_DIR/ios/Runner/GoogleService-Info.plist" ]; then
 fi
 
 cd "$FLUTTER_DIR"
+GIT_COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 flutter --version
 flutter doctor -v
 flutter clean
@@ -37,7 +38,12 @@ text = re.sub(r"CURRENT_PROJECT_VERSION = [^;]+;", "CURRENT_PROJECT_VERSION = ${
 text = re.sub(r"MARKETING_VERSION = [^;]+;", "MARKETING_VERSION = ${BUILD_NAME};", text)
 project.write_text(text)
 PY
-flutter build ipa --release --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
+flutter build ipa --release \
+  --build-name "$BUILD_NAME" \
+  --build-number "$BUILD_NUMBER" \
+  --dart-define "MEDICOHUB_GIT_COMMIT=$GIT_COMMIT" \
+  --dart-define "MEDICOHUB_BUILD_NUMBER=$BUILD_NUMBER" \
+  --dart-define "MEDICOHUB_API_BASE_URL=https://medicohub-backend.fly.dev"
 
 echo ""
 echo "IPA output directory:"
