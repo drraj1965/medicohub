@@ -859,16 +859,21 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     await prefs.setBool(_useTestAdsPreferenceKey, _useTestAds);
   }
 
-  bool get _supportsMobileAds =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _isAndroid => !kIsWeb && Platform.isAndroid;
+  bool get _isIOS => !kIsWeb && Platform.isIOS;
+  bool get _isMacOS => !kIsWeb && Platform.isMacOS;
+  bool get _isWindows => !kIsWeb && Platform.isWindows;
+  String get _platformName => kIsWeb ? 'web' : Platform.operatingSystem;
+
+  bool get _supportsMobileAds => _isAndroid || _isIOS;
 
   String get _bannerAdUnitId {
-    if (Platform.isAndroid) {
+    if (_isAndroid) {
       return (_useTestAds || kDebugMode)
           ? _androidTestBannerAdUnitId
           : _androidBannerAdUnitId;
     }
-    if (Platform.isIOS) {
+    if (_isIOS) {
       return (_useTestAds || kDebugMode)
           ? _iosTestBannerAdUnitId
           : _iosBannerAdUnitId;
@@ -877,12 +882,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   String get _appOpenAdUnitId {
-    if (Platform.isAndroid) {
+    if (_isAndroid) {
       return (_useTestAds || kDebugMode)
           ? _androidTestAppOpenAdUnitId
           : _androidAppOpenAdUnitId;
     }
-    if (Platform.isIOS) {
+    if (_isIOS) {
       return (_useTestAds || kDebugMode)
           ? _iosTestAppOpenAdUnitId
           : _iosAppOpenAdUnitId;
@@ -1256,6 +1261,19 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         subject: article.title,
         text: text,
       ),
+    );
+    unawaited(
+      _api.recordGrowthEvent(
+        eventName: 'article_shared',
+        userId: _activeUser?.id,
+        platform: _platformName,
+        contentId: article.id,
+        language: article.language,
+        metadata: <String, Object?>{
+          'content_type': 'article',
+          'category': article.category,
+        },
+      ).catchError((_) {}),
     );
   }
 
@@ -1762,7 +1780,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _ensureBundledBackendForWindows() async {
-    if (!Platform.isWindows) {
+    if (!_isWindows) {
       return;
     }
     if (await _api.checkHealth()) {
@@ -1802,6 +1820,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   bool get _isAdminView => _activeUser?.isAdmin == true;
+
+  bool get _canAccessGrowthStudio => _activeUser?.canAccessGrowthStudio == true;
 
   bool get _canViewOperationalDiagnostics {
     final user = _activeUser;
@@ -2005,8 +2025,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
 
   bool get _isSignInUsingEmail => _selectedSignInChannel == 'Email';
 
-  bool get _supportsGoogleSignIn =>
-      kIsWeb || Platform.isAndroid || Platform.isIOS;
+  bool get _supportsGoogleSignIn => kIsWeb || _isAndroid || _isIOS;
 
   String get _selectedDialCode => _isSignInUsingEmail
       ? ''
@@ -2430,6 +2449,16 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                         _openAdminDataConsole();
                       },
                     ),
+                  if (_canAccessGrowthStudio)
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.trending_up_rounded,
+                      label: 'Growth Studio',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _openGrowthStudio();
+                      },
+                    ),
                   _buildDrawerItem(
                     context,
                     icon: Icons.info_outline_rounded,
@@ -2507,6 +2536,22 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
           onOpenDoctorPublishing: _canAccessDoctorPublishing
               ? () => _jumpToTabFromConsole(5)
               : null,
+        ),
+      ),
+    );
+  }
+
+  void _openGrowthStudio() {
+    final admin = _activeUser;
+    if (admin == null || !admin.canAccessGrowthStudio) {
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GrowthStudioPage(
+          api: _api,
+          admin: admin,
+          articles: _blogArticles,
         ),
       ),
     );
@@ -5616,7 +5661,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
                       FilledButton(
                         onPressed: _openUpdateDownload,
                         child: Text(
-                          Platform.isAndroid ? 'Download APK' : 'Open Update',
+                          _isAndroid ? 'Download APK' : 'Open Update',
                         ),
                       ),
                   ],
@@ -6306,9 +6351,11 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
             Text('Voice Input', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              Platform.isAndroid
+              _isAndroid
                   ? 'Android path: use Gboard or an Indic keyboard mic for quick speech-to-text, or record an audio note.'
-                  : 'Windows path: record an audio note, preview it, redo it if needed, then upload it.',
+                  : kIsWeb
+                      ? 'Web path: use your keyboard microphone or type your question, then attach files if needed.'
+                      : 'Windows path: record an audio note, preview it, redo it if needed, then upload it.',
             ),
             if (_voiceStatus != null) ...[
               const SizedBox(height: 12),
@@ -7718,11 +7765,26 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   }
 
   Future<void> _saveDisclaimerLocally() async {
+    final disclaimer = _currentDisclaimerDocument;
+    if (kIsWeb) {
+      await Clipboard.setData(
+        ClipboardData(
+          text:
+              '${disclaimer.title}\n\n${disclaimer.body}\n\n$_currentRegionNote',
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _voiceStatus = 'Disclaimer copied to clipboard.';
+      });
+      return;
+    }
     final directory = await getApplicationDocumentsDirectory();
     final file = File(
       '${directory.path}${Platform.pathSeparator}medicohub-disclaimer-${DateTime.now().millisecondsSinceEpoch}.txt',
     );
-    final disclaimer = _currentDisclaimerDocument;
     await file.writeAsString(
       '${disclaimer.title}\n\n${disclaimer.body}\n\n$_currentRegionNote',
     );
@@ -8635,6 +8697,8 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     }
     if (lower.contains('socket') ||
         lower.contains('connection') ||
+        lower.contains('clientfailed') ||
+        lower.contains('failed to fetch') ||
         lower.contains('host') ||
         lower.contains('timeout')) {
       return 'MedicoHub could not reach the publishing service. Please check the backend connection and try again.';
@@ -9782,9 +9846,9 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
         return;
       }
       setState(() {
-        _voiceStatus = Platform.isAndroid
+        _voiceStatus = _isAndroid
             ? 'Use the keyboard microphone in Gboard or your preferred Indic keyboard for $_selectedLanguage.'
-            : Platform.isIOS || Platform.isMacOS
+            : _isIOS || _isMacOS
                 ? 'Use Apple Dictation from the iPhone, iPad, or Mac keyboard microphone to enter speech directly into this field.'
                 : 'Use your system dictation keyboard or audio note mode.';
       });
@@ -9835,7 +9899,7 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
   Future<void> _showKeyboardVoiceHelp() async {
     final text = '${_voiceService.keyboardVoiceInstructions()} '
         'Preferred language: $_selectedLanguage. '
-        '${Platform.isIOS || Platform.isMacOS ? 'On Apple devices, use the built-in keyboard microphone / Dictation key.' : 'On Android, Gboard or Indic Keyboard microphone is recommended.'}';
+        '${_isIOS || _isMacOS ? 'On Apple devices, use the built-in keyboard microphone / Dictation key.' : _isAndroid ? 'On Android, Gboard or Indic Keyboard microphone is recommended.' : 'On web, use your browser or keyboard dictation tools.'}';
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) {
       return;
@@ -9873,6 +9937,12 @@ class _MedicoHubHomePageState extends State<MedicoHubHomePage>
     final user = _activeUser;
     final path = _audioAttachmentPath;
     if (user == null || path == null) {
+      return;
+    }
+    if (kIsWeb) {
+      setState(() {
+        _voiceStatus = 'Audio note upload is not available in the web build.';
+      });
       return;
     }
     final bytes = await File(path).readAsBytes();
@@ -11386,7 +11456,13 @@ class _AdminShareEmailDialogState extends State<_AdminShareEmailDialog> {
       if (!mounted) {
         return;
       }
-      setState(() => _error = 'Could not queue campaign: $error');
+      final raw = error.toString();
+      final lower = raw.toLowerCase();
+      final message = lower.contains('timeout') ||
+              lower.contains('future not completed')
+          ? 'The campaign is taking longer than expected. It may still have been queued; check Campaign History before sending again.'
+          : 'Could not queue campaign: $raw';
+      setState(() => _error = message);
     } finally {
       if (mounted) {
         setState(() => _sending = false);
@@ -12399,4 +12475,1278 @@ class _ArticleSectionEditorData {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+}
+
+class GrowthStudioPage extends StatefulWidget {
+  const GrowthStudioPage({
+    super.key,
+    required this.api,
+    required this.admin,
+    required this.articles,
+  });
+
+  final AppApiService api;
+  final UserProfile admin;
+  final List<BlogArticle> articles;
+
+  @override
+  State<GrowthStudioPage> createState() => _GrowthStudioPageState();
+}
+
+class _GrowthStudioPageState extends State<GrowthStudioPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final _campaignNameController = TextEditingController();
+  final _campaignHypothesisController = TextEditingController();
+  final _campaignAudienceController = TextEditingController();
+  final _campaignValueController = TextEditingController();
+  final _campaignCtaController = TextEditingController();
+  final _campaignMetricController =
+      TextEditingController(text: 'activated_users');
+  final _campaignChannelsController =
+      TextEditingController(text: 'MedicoHub, email, WhatsApp');
+  final _derivativeTitleController = TextEditingController();
+  final _derivativeBodyController = TextEditingController();
+  final _publishTitleController = TextEditingController();
+  final _publishBodyController = TextEditingController();
+  String _campaignObjective = 'activation';
+  String _derivativeType = 'social_post';
+  String _derivativePlatform = 'MedicoHub';
+  String? _selectedArticleId;
+  String? _selectedIntegrationId;
+  GrowthOverview? _overview;
+  List<GrowthCampaign> _campaigns = const [];
+  List<GrowthOpportunity> _opportunities = const [];
+  List<GrowthDerivative> _derivatives = const [];
+  List<GrowthIntegrationCatalogItem> _integrationCatalog = const [];
+  List<GrowthIntegration> _integrations = const [];
+  List<GrowthPublishingRequest> _publishingRequests = const [];
+  bool _canManageSocialAccounts = false;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 5, vsync: this);
+    final publishedArticles =
+        widget.articles.where((article) => article.status == 'published');
+    _selectedArticleId =
+        publishedArticles.isNotEmpty ? publishedArticles.first.id : null;
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _campaignNameController.dispose();
+    _campaignHypothesisController.dispose();
+    _campaignAudienceController.dispose();
+    _campaignValueController.dispose();
+    _campaignCtaController.dispose();
+    _campaignMetricController.dispose();
+    _campaignChannelsController.dispose();
+    _derivativeTitleController.dispose();
+    _derivativeBodyController.dispose();
+    _publishTitleController.dispose();
+    _publishBodyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait<dynamic>([
+        widget.api.fetchGrowthOverview(actorId: widget.admin.id),
+        widget.api.fetchGrowthCampaigns(actorId: widget.admin.id),
+        widget.api.fetchGrowthOpportunities(actorId: widget.admin.id),
+        widget.api.fetchGrowthDerivatives(actorId: widget.admin.id),
+        widget.api.fetchGrowthIntegrationCatalog(actorId: widget.admin.id),
+        widget.api.fetchGrowthIntegrations(actorId: widget.admin.id),
+        widget.api.fetchGrowthPublishingRequests(actorId: widget.admin.id),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _overview = results[0] as GrowthOverview;
+        _campaigns = results[1] as List<GrowthCampaign>;
+        _opportunities = results[2] as List<GrowthOpportunity>;
+        _derivatives = results[3] as List<GrowthDerivative>;
+        _integrationCatalog = results[4] as List<GrowthIntegrationCatalogItem>;
+        _integrations = results[5] as List<GrowthIntegration>;
+        _publishingRequests = results[6] as List<GrowthPublishingRequest>;
+        _canManageSocialAccounts = widget.admin.canManageSocialAccounts ||
+            _integrationCatalog.any((item) => item.canManageSocialAccounts);
+        _selectedIntegrationId ??= _integrations
+            .where((item) => item.approvalStatus == 'approved')
+            .map((item) => item.id)
+            .cast<String?>()
+            .firstOrNull;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _startOAuth(GrowthIntegration integration) async {
+    if (!_canManageSocialAccounts || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.api.startGrowthIntegrationOAuth(
+        actorId: widget.admin.id,
+        integrationId: integration.id,
+      );
+      final url = result['authorization_url']?.toString() ?? '';
+      if (url.isNotEmpty) {
+        await _launchExternalLink(url);
+      }
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _connectCatalogItem(GrowthIntegrationCatalogItem item) async {
+    if (!_canManageSocialAccounts || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      var integration = _integrations
+          .where((candidate) => candidate.id == item.integrationId)
+          .cast<GrowthIntegration?>()
+          .firstOrNull;
+      integration ??= await widget.api.createGrowthIntegration(
+        actorId: widget.admin.id,
+        provider: item.provider,
+        displayName: item.label,
+        authMode: item.authMode,
+        scopes: item.scopes,
+        notes: item.notes,
+      );
+      if (item.authMode == 'oauth2') {
+        final result = await widget.api.startGrowthIntegrationOAuth(
+          actorId: widget.admin.id,
+          integrationId: integration.id,
+        );
+        final url = result['authorization_url']?.toString() ?? '';
+        if (url.isNotEmpty) {
+          await _launchExternalLink(url);
+        }
+      }
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _approveIntegration(
+    GrowthIntegration integration,
+    String status,
+  ) async {
+    if (!_canManageSocialAccounts || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.updateGrowthIntegrationApproval(
+        actorId: widget.admin.id,
+        integrationId: integration.id,
+        approvalStatus: status,
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _queuePublishingRequest() async {
+    final integrationId = _selectedIntegrationId;
+    final integration = _integrations
+        .where((item) => item.id == integrationId)
+        .cast<GrowthIntegration?>()
+        .firstOrNull;
+    if (!widget.admin.canManageGrowthStudio || integration == null || _saving) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.createGrowthPublishingRequest(
+        actorId: widget.admin.id,
+        integrationId: integration.id,
+        provider: integration.provider,
+        title: _publishTitleController.text.trim(),
+        body: _publishBodyController.text.trim(),
+      );
+      _publishTitleController.clear();
+      _publishBodyController.clear();
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _updatePublishingRequest(
+    GrowthPublishingRequest request,
+    String status,
+  ) async {
+    if ((status == 'approved' || status == 'exported') &&
+        !_canManageSocialAccounts) {
+      return;
+    }
+    if (!widget.admin.canManageGrowthStudio || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.updateGrowthPublishingRequest(
+        actorId: widget.admin.id,
+        publishId: request.id,
+        status: status,
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _copyText(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied')),
+    );
+  }
+
+  Future<void> _testIntegration(GrowthIntegration integration) async {
+    if (!_canManageSocialAccounts || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.api.testGrowthIntegration(
+        actorId: widget.admin.id,
+        integrationId: integration.id,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Connection check: ${result['status'] ?? 'unknown'}',
+          ),
+        ),
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _showDestinationDialog(GrowthIntegration integration) async {
+    if (!_canManageSocialAccounts || _saving) return;
+    final accountIdController =
+        TextEditingController(text: integration.externalAccountId);
+    final accountNameController =
+        TextEditingController(text: integration.externalAccountName);
+    final accountTypeController =
+        TextEditingController(text: integration.externalAccountType);
+    final pageIdController = TextEditingController(text: integration.pageId);
+    final instagramIdController =
+        TextEditingController(text: integration.instagramBusinessAccountId);
+    final channelIdController =
+        TextEditingController(text: integration.channelId);
+    final notesController = TextEditingController(text: integration.notes);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Select ${integration.displayName} destination'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: accountNameController,
+                decoration:
+                    const InputDecoration(labelText: 'Connected account name'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: accountTypeController,
+                decoration: const InputDecoration(labelText: 'Account type'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: accountIdController,
+                decoration:
+                    const InputDecoration(labelText: 'External account ID'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: pageIdController,
+                decoration:
+                    const InputDecoration(labelText: 'Facebook Page ID'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: instagramIdController,
+                decoration: const InputDecoration(
+                  labelText: 'Instagram Business Account ID',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: channelIdController,
+                decoration:
+                    const InputDecoration(labelText: 'YouTube Channel ID'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: notesController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: 'Notes'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.updateGrowthIntegrationSelection(
+        actorId: widget.admin.id,
+        integrationId: integration.id,
+        externalAccountId: accountIdController.text.trim(),
+        externalAccountName: accountNameController.text.trim(),
+        externalAccountType: accountTypeController.text.trim(),
+        pageId: pageIdController.text.trim(),
+        instagramBusinessAccountId: instagramIdController.text.trim(),
+        channelId: channelIdController.text.trim(),
+        notes: notesController.text.trim(),
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _createCampaign() async {
+    if (!widget.admin.canManageGrowthStudio || _saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.createGrowthCampaign(
+        actorId: widget.admin.id,
+        name: _campaignNameController.text.trim(),
+        objective: _campaignObjective,
+        hypothesis: _campaignHypothesisController.text.trim(),
+        targetAudience: _campaignAudienceController.text.trim(),
+        valueOffered: _campaignValueController.text.trim(),
+        primaryCta: _campaignCtaController.text.trim(),
+        primaryMetric: _campaignMetricController.text.trim(),
+        channels: _campaignChannelsController.text
+            .split(',')
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList(),
+      );
+      _campaignNameController.clear();
+      _campaignHypothesisController.clear();
+      _campaignAudienceController.clear();
+      _campaignValueController.clear();
+      _campaignCtaController.clear();
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _createDerivative() async {
+    final articleId = _selectedArticleId;
+    if (!widget.admin.canManageGrowthStudio || articleId == null || _saving) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.createGrowthDerivative(
+        actorId: widget.admin.id,
+        sourceArticleId: articleId,
+        assetType: _derivativeType,
+        platform: _derivativePlatform,
+        title: _derivativeTitleController.text.trim(),
+        body: _derivativeBodyController.text.trim(),
+      );
+      _derivativeTitleController.clear();
+      _derivativeBodyController.clear();
+      await _refresh();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: const Icon(Icons.rocket_launch_rounded),
+        title: const Text('MedicoHub Growth Studio'),
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(icon: Icon(Icons.space_dashboard_rounded), text: 'Overview'),
+            Tab(icon: Icon(Icons.campaign_rounded), text: 'Campaigns'),
+            Tab(
+                icon: Icon(Icons.travel_explore_rounded),
+                text: 'Opportunities'),
+            Tab(icon: Icon(Icons.ios_share_rounded), text: 'Promotion'),
+            Tab(icon: Icon(Icons.hub_rounded), text: 'Integrations'),
+          ],
+        ),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_error != null)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.error_outline_rounded),
+                        title: const Text('Growth Studio could not refresh'),
+                        subtitle: Text(_error!),
+                      ),
+                    ),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height -
+                        kToolbarHeight -
+                        128,
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildOverview(context),
+                        _buildCampaigns(context),
+                        _buildOpportunities(context),
+                        _buildPromotion(context),
+                        _buildIntegrations(context),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildOverview(BuildContext context) {
+    final overview = _overview;
+    if (overview == null) {
+      return const Center(child: Text('No growth metrics available yet.'));
+    }
+    final metrics = <MapEntry<String, num>>[
+      MapEntry('Registrations', overview.metrics['new_registrations'] ?? 0),
+      MapEntry('Activated users', overview.metrics['activated_users'] ?? 0),
+      MapEntry('Activation rate', overview.metrics['activation_rate'] ?? 0),
+      MapEntry('DAU', overview.metrics['daily_active_users'] ?? 0),
+      MapEntry('WAU', overview.metrics['weekly_active_users'] ?? 0),
+      MapEntry('MAU', overview.metrics['monthly_active_users'] ?? 0),
+      MapEntry('Questions', overview.metrics['questions_submitted'] ?? 0),
+      MapEntry('Shares', overview.metrics['shares'] ?? 0),
+      MapEntry('Referral activations',
+          overview.metrics['referral_activations'] ?? 0),
+    ];
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              child: Icon(
+                Icons.rocket_launch_rounded,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            title: const Text('Growth Command Center'),
+            subtitle: const Text(
+              'Attract, convert, activate, retain, and learn from useful participation.',
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (overview.smallSampleWarning)
+            const ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text('Small sample size'),
+              subtitle: Text(
+                'Percentages are directional until more events are collected.',
+              ),
+            ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: metrics
+                .map((metric) => SizedBox(
+                      width: 180,
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(metric.key,
+                                  style:
+                                      Theme.of(context).textTheme.labelLarge),
+                              const SizedBox(height: 8),
+                              Text(
+                                metric.key == 'Activation rate'
+                                    ? '${metric.value}%'
+                                    : metric.value.toString(),
+                                style:
+                                    Theme.of(context).textTheme.headlineSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          _buildPairList('Top acquisition sources', overview.topSources),
+          _buildPairList('Top content', overview.topContent),
+          ListTile(
+            leading: const Icon(Icons.dataset_rounded),
+            title: const Text('Sample size'),
+            subtitle: Text(overview.sampleSize.entries
+                .map((entry) => '${entry.key}: ${entry.value}')
+                .join(' | ')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPairList(String title, List<MapEntry<String, int>> entries) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const Divider(),
+            if (entries.isEmpty)
+              const Text('No events recorded yet.')
+            else
+              for (final entry in entries)
+                ListTile(
+                  dense: true,
+                  title: Text(entry.key),
+                  trailing: Text(entry.value.toString()),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCampaigns(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text('Create Growth Campaign',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _campaignNameController,
+                    decoration:
+                        const InputDecoration(labelText: 'Campaign name'),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _campaignObjective,
+                    decoration: const InputDecoration(labelText: 'Objective'),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'activation', child: Text('Activation')),
+                      DropdownMenuItem(
+                          value: 'registration', child: Text('Registration')),
+                      DropdownMenuItem(
+                          value: 'referral', child: Text('Referral')),
+                      DropdownMenuItem(
+                          value: 're_engagement', child: Text('Re-engagement')),
+                      DropdownMenuItem(
+                          value: 'article_engagement',
+                          child: Text('Article engagement')),
+                    ],
+                    onChanged: (value) => setState(
+                      () => _campaignObjective = value ?? 'activation',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignHypothesisController,
+                    decoration: const InputDecoration(labelText: 'Hypothesis'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignAudienceController,
+                    decoration:
+                        const InputDecoration(labelText: 'Target audience'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignValueController,
+                    decoration:
+                        const InputDecoration(labelText: 'Value offered'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignCtaController,
+                    decoration: const InputDecoration(labelText: 'Primary CTA'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignMetricController,
+                    decoration:
+                        const InputDecoration(labelText: 'Primary metric'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _campaignChannelsController,
+                    decoration: const InputDecoration(labelText: 'Channels'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: widget.admin.canManageGrowthStudio && !_saving
+                        ? _createCampaign
+                        : null,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Create campaign'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          for (final campaign in _campaigns)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.campaign_rounded),
+                title: Text(campaign.name),
+                subtitle: Text(
+                  '${campaign.objective} | ${campaign.primaryMetric} | ${campaign.targetAudience}',
+                ),
+                trailing: Chip(label: Text(campaign.status)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOpportunities(BuildContext context) {
+    return ListView(
+      children: [
+        for (final opportunity in _opportunities)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.travel_explore_rounded),
+              title: Text(opportunity.title),
+              subtitle: Text(
+                '${opportunity.source} | ${opportunity.specialty} | ${opportunity.language}\nCTA: ${opportunity.recommendedCta}',
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(opportunity.estimatedValue.toString()),
+                  Text(opportunity.urgency),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPromotion(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text('Create Article Derivative',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedArticleId,
+                    decoration:
+                        const InputDecoration(labelText: 'Source article'),
+                    items: widget.articles
+                        .where((article) => article.status == 'published')
+                        .map(
+                          (article) => DropdownMenuItem<String>(
+                            value: article.id,
+                            child: Text(
+                              article.title,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedArticleId = value),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _derivativeType,
+                    decoration: const InputDecoration(labelText: 'Asset type'),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'social_post', child: Text('Social post')),
+                      DropdownMenuItem(
+                          value: 'instagram_carousel',
+                          child: Text('Instagram carousel')),
+                      DropdownMenuItem(
+                          value: 'short_video_script',
+                          child: Text('Short-video script')),
+                      DropdownMenuItem(
+                          value: 'linkedin_post', child: Text('LinkedIn post')),
+                      DropdownMenuItem(
+                          value: 'whatsapp_message',
+                          child: Text('WhatsApp message')),
+                      DropdownMenuItem(
+                          value: 'email_digest_item',
+                          child: Text('Email digest item')),
+                    ],
+                    onChanged: (value) => setState(
+                        () => _derivativeType = value ?? 'social_post'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _derivativeTitleController,
+                    decoration:
+                        const InputDecoration(labelText: 'Derivative title'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _derivativeBodyController,
+                    minLines: 4,
+                    maxLines: 8,
+                    decoration: const InputDecoration(labelText: 'Draft copy'),
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                          value: 'MedicoHub', label: Text('MedicoHub')),
+                      ButtonSegment(value: 'LinkedIn', label: Text('LinkedIn')),
+                      ButtonSegment(value: 'WhatsApp', label: Text('WhatsApp')),
+                    ],
+                    selected: {_derivativePlatform},
+                    onSelectionChanged: (value) =>
+                        setState(() => _derivativePlatform = value.first),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: widget.admin.canManageGrowthStudio && !_saving
+                        ? _createDerivative
+                        : null,
+                    icon: const Icon(Icons.add_link_rounded),
+                    label: const Text('Create derivative'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          for (final derivative in _derivatives)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.ios_share_rounded),
+                title: Text(derivative.title),
+                subtitle: Text(
+                  '${derivative.assetType} | ${derivative.platform} | ${derivative.publicationStatus}'
+                  '${derivative.outdatedReason.isEmpty ? '' : '\n${derivative.outdatedReason}'}',
+                ),
+                trailing: Chip(label: Text(derivative.approvalStatus)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIntegrations(BuildContext context) {
+    final approvedIntegrations = _integrations
+        .where((item) => item.approvalStatus == 'approved')
+        .toList();
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.admin_panel_settings_rounded),
+              title: const Text('Official Social Accounts'),
+              subtitle: const Text(
+                'Phase 1 connects only MedicoHub-managed organisation accounts. Other admins may draft and request approval, but only social-account managers can reconnect or change destinations.',
+              ),
+              trailing: Chip(
+                avatar: const Icon(Icons.verified_user_rounded, size: 18),
+                label: Text(
+                    _canManageSocialAccounts ? 'Can manage' : 'Draft only'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final item in _integrationCatalog)
+                SizedBox(
+                  width: 320,
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(_integrationIcon(item.provider)),
+                            title: Text(item.label),
+                            subtitle: Text(item.notes),
+                            trailing: item.recommended
+                                ? const Icon(Icons.star_rounded)
+                                : null,
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              Chip(label: Text(item.authMode)),
+                              if (item.supportsApiPublish)
+                                Chip(
+                                  avatar: Icon(
+                                    item.oauthConfigured
+                                        ? Icons.key_rounded
+                                        : Icons.key_off_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(item.oauthConfigured
+                                      ? 'OAuth configured'
+                                      : 'OAuth app needed'),
+                                )
+                              else
+                                const Chip(label: Text('Manual workflow')),
+                              Chip(
+                                label: Text(_catalogStatusLabel(item)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _canManageSocialAccounts &&
+                                          !_saving &&
+                                          (item.authMode != 'oauth2' ||
+                                              item.oauthConfigured)
+                                      ? () => _connectCatalogItem(item)
+                                      : null,
+                                  icon: Icon(item.authMode == 'oauth2'
+                                      ? Icons.login_rounded
+                                      : Icons.add_link_rounded),
+                                  label: Text(item.authMode == 'oauth2'
+                                      ? item.integrationId.isEmpty
+                                          ? 'Connect'
+                                          : 'Reconnect'
+                                      : item.integrationId.isEmpty
+                                          ? 'Enable export'
+                                          : 'Enabled'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: 'Copy setup details',
+                                onPressed: (item.scopes.isEmpty &&
+                                        item.callbackUrl.isEmpty)
+                                    ? null
+                                    : () => _copyText(
+                                          _integrationSetupDetails(item),
+                                        ),
+                                icon: const Icon(Icons.copy_rounded),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text('Connected official accounts',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (_integrations.isEmpty)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.info_outline_rounded),
+                title: Text('No channels enabled yet'),
+                subtitle: Text(
+                  'Start with manual export, then configure OAuth app credentials for API publishing.',
+                ),
+              ),
+            )
+          else
+            for (final integration in _integrations)
+              Card(
+                child: ListTile(
+                  leading: Icon(_integrationIcon(integration.provider)),
+                  title: Text(
+                    integration.externalAccountName.isNotEmpty
+                        ? integration.externalAccountName
+                        : integration.displayName,
+                  ),
+                  subtitle: Text(
+                    '${integration.provider} | ${integration.externalAccountType.isEmpty ? 'organisation' : integration.externalAccountType} | ${integration.connectionStatus}'
+                    '\nPermissions: ${integration.scopes.isEmpty ? 'manual export' : integration.scopes.join(', ')}'
+                    '\nToken: ${integration.tokenStatus} | Last check: ${integration.lastHealthCheckAt.isEmpty ? 'not checked' : integration.lastHealthCheckAt}'
+                    '${integration.pageId.isEmpty ? '' : '\nPage: ${integration.pageId}'}'
+                    '${integration.instagramBusinessAccountId.isEmpty ? '' : '\nInstagram: ${integration.instagramBusinessAccountId}'}'
+                    '${integration.channelId.isEmpty ? '' : '\nChannel: ${integration.channelId}'}'
+                    '\n${integration.approvalStatus} | ${integration.publishingMode}'
+                    '${integration.callbackUrl.isEmpty ? '' : '\nCallback: ${integration.callbackUrl}'}',
+                  ),
+                  isThreeLine: true,
+                  trailing: Wrap(
+                    spacing: 6,
+                    children: [
+                      IconButton(
+                        tooltip: 'Copy callback URL',
+                        onPressed: integration.callbackUrl.isEmpty
+                            ? null
+                            : () => _copyText(integration.callbackUrl),
+                        icon: const Icon(Icons.copy_rounded),
+                      ),
+                      if (integration.authMode == 'oauth2')
+                        IconButton(
+                          tooltip: integration.connectionStatus ==
+                                  'oauth_callback_received'
+                              ? 'Reconnect'
+                              : 'Connect',
+                          onPressed: _canManageSocialAccounts && !_saving
+                              ? () => _startOAuth(integration)
+                              : null,
+                          icon: const Icon(Icons.login_rounded),
+                        ),
+                      IconButton(
+                        tooltip: 'Select destination',
+                        onPressed: _canManageSocialAccounts && !_saving
+                            ? () => _showDestinationDialog(integration)
+                            : null,
+                        icon: const Icon(Icons.ads_click_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Test connection',
+                        onPressed: _canManageSocialAccounts && !_saving
+                            ? () => _testIntegration(integration)
+                            : null,
+                        icon: const Icon(Icons.health_and_safety_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Approve integration',
+                        onPressed: _canManageSocialAccounts &&
+                                !_saving &&
+                                integration.approvalStatus != 'approved'
+                            ? () => _approveIntegration(
+                                  integration,
+                                  'approved',
+                                )
+                            : null,
+                        icon: const Icon(Icons.verified_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Disable integration',
+                        onPressed: _canManageSocialAccounts && !_saving
+                            ? () => _approveIntegration(
+                                  integration,
+                                  'disabled',
+                                )
+                            : null,
+                        icon: const Icon(Icons.block_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          const SizedBox(height: 12),
+          Text('Publishing approval queue',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: _integrationDropdownValue(
+                      _selectedIntegrationId,
+                      approvedIntegrations.map((item) => item.id),
+                    ),
+                    decoration:
+                        const InputDecoration(labelText: 'Approved channel'),
+                    items: approvedIntegrations
+                        .map(
+                          (integration) => DropdownMenuItem<String>(
+                            value: integration.id,
+                            child: Text(integration.displayName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedIntegrationId = value),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _publishTitleController,
+                    decoration: const InputDecoration(labelText: 'Post title'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _publishBodyController,
+                    minLines: 4,
+                    maxLines: 8,
+                    decoration: const InputDecoration(
+                      labelText: 'Approved post copy',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: approvedIntegrations.isNotEmpty &&
+                            widget.admin.canManageGrowthStudio &&
+                            !_saving
+                        ? _queuePublishingRequest
+                        : null,
+                    icon: const Icon(Icons.rule_rounded),
+                    label: const Text('Queue for approval'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_publishingRequests.isEmpty)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.pending_actions_rounded),
+                title: Text('No publishing requests yet'),
+                subtitle: Text(
+                  'Create approved copy here before exporting or publishing on any channel.',
+                ),
+              ),
+            )
+          else
+            for (final request in _publishingRequests)
+              Card(
+                child: ListTile(
+                  leading: Icon(_integrationIcon(request.provider)),
+                  title: Text(request.title),
+                  subtitle: Text(
+                    '${request.provider} | ${request.status}\n${request.body}',
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  isThreeLine: true,
+                  trailing: Wrap(
+                    spacing: 6,
+                    children: [
+                      IconButton(
+                        tooltip: 'Copy post copy',
+                        onPressed: () => _copyText(
+                          '${request.title}\n\n${request.body}',
+                        ),
+                        icon: const Icon(Icons.copy_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Approve',
+                        onPressed: widget.admin.canManageGrowthStudio &&
+                                !_saving &&
+                                request.status != 'approved' &&
+                                _canManageSocialAccounts
+                            ? () => _updatePublishingRequest(
+                                  request,
+                                  'approved',
+                                )
+                            : null,
+                        icon: const Icon(Icons.check_circle_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Mark exported',
+                        onPressed: _canManageSocialAccounts && !_saving
+                            ? () => _updatePublishingRequest(
+                                  request,
+                                  'exported',
+                                )
+                            : null,
+                        icon: const Icon(Icons.file_upload_outlined),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  IconData _integrationIcon(String provider) {
+    switch (provider) {
+      case 'linkedin':
+        return Icons.business_center_rounded;
+      case 'facebook':
+      case 'instagram':
+      case 'meta':
+      case 'threads':
+        return Icons.groups_rounded;
+      case 'youtube':
+      case 'tiktok':
+        return Icons.play_circle_outline_rounded;
+      case 'google_business':
+        return Icons.storefront_rounded;
+      case 'reddit':
+        return Icons.forum_rounded;
+      case 'x':
+        return Icons.alternate_email_rounded;
+      case 'whatsapp':
+        return Icons.chat_rounded;
+      case 'newsletter':
+        return Icons.mark_email_read_rounded;
+      default:
+        return Icons.ios_share_rounded;
+    }
+  }
+
+  String _friendlyStatus(String status) {
+    switch (status) {
+      case 'oauth_pending':
+        return 'Ready to connect';
+      case 'oauth_callback_received':
+        return 'Callback received';
+      case 'token_reference_configured':
+      case 'connected':
+        return 'Connected';
+      case 'manual_export_ready':
+        return 'Export enabled';
+      case 'oauth_not_configured':
+        return 'OAuth app needed';
+      case 'needs_reauth':
+        return 'Reconnect needed';
+      case 'disabled':
+        return 'Disabled';
+      case 'not_connected':
+        return 'Not connected';
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  }
+
+  String _catalogStatusLabel(GrowthIntegrationCatalogItem item) {
+    if (item.integrationId.isNotEmpty) {
+      return _friendlyStatus(item.connectionStatus);
+    }
+    if (item.authMode == 'oauth2') {
+      return item.oauthConfigured ? 'Ready to add' : 'App setup needed';
+    }
+    return 'Ready to enable';
+  }
+
+  String _integrationSetupDetails(GrowthIntegrationCatalogItem item) {
+    final lines = <String>[
+      '${item.label} (${item.provider})',
+      if (item.callbackUrl.isNotEmpty) 'Callback URL: ${item.callbackUrl}',
+      if (item.scopes.isNotEmpty) 'Scopes: ${item.scopes.join(' ')}',
+    ];
+    return lines.join('\n');
+  }
+
+  String? _integrationDropdownValue(
+    String? currentValue,
+    Iterable<String> values,
+  ) {
+    if (currentValue == null) {
+      return null;
+    }
+    return values.contains(currentValue) ? currentValue : null;
+  }
 }

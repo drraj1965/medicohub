@@ -1,6 +1,7 @@
 param(
     [switch]$SkipClean,
-    [switch]$InstallOnDevice
+    [switch]$InstallOnDevice,
+    [string]$BuildNumber = "34"
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,7 +41,9 @@ try {
 
     flutter pub get
     flutter analyze
-    flutter build appbundle --release
+    flutter build appbundle --release `
+        --dart-define "MEDICOHUB_API_BASE_URL=https://medicohub-backend.fly.dev" `
+        --dart-define "MEDICOHUB_BUILD_NUMBER=$BuildNumber"
 
     if (-not (Test-Path $AabPath)) {
         throw "AAB was not created: $AabPath"

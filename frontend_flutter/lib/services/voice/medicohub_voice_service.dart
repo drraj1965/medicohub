@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 
 import 'audio_recorder_service.dart';
 import 'native_speech_v3_service.dart';
@@ -73,6 +74,9 @@ class MedicoHubVoiceService {
   }
 
   Future<bool> audioFileExists(String path) async {
+    if (kIsWeb) {
+      return false;
+    }
     return File(path).exists();
   }
 
@@ -87,6 +91,9 @@ class MedicoHubVoiceService {
 
   Future<void> deleteAudioNote(String path) async {
     await _player.stop();
+    if (kIsWeb) {
+      return;
+    }
     final file = File(path);
     if (await file.exists()) {
       await file.delete();

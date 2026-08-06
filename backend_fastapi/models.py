@@ -8,6 +8,18 @@ from pydantic import BaseModel, Field, computed_field
 
 
 UTC = timezone.utc
+UserRole = Literal[
+    "patient",
+    "doctor",
+    "admin",
+    "superAdmin",
+    "growthManager",
+    "medicalReviewer",
+    "contentEditor",
+    "doctorContributor",
+    "communityModerator",
+    "analyticsViewer",
+]
 
 
 def utc_now() -> datetime:
@@ -103,13 +115,14 @@ class User(BaseModel):
     phone_number: str | None = None
     phone_country_code: str | None = None
     phone_national_number: str | None = None
-    role: Literal["patient", "doctor", "admin"]
+    role: UserRole
     verified: bool = False
     languages: list[str] = Field(default_factory=lambda: ["English"])
     specialties: list[str] = Field(default_factory=list)
     doctor_status: Literal["not_applicable", "invited", "active"] = "not_applicable"
     can_manage_doctors: bool = False
     can_moderate_content: bool = False
+    permissions: list[str] = Field(default_factory=list)
     invited_by: str | None = None
     communication_preferences: dict[str, bool] = Field(
         default_factory=lambda: {
@@ -173,7 +186,7 @@ class UserProfileUpsertRequest(BaseModel):
     phone_number: str | None = None
     phone_country_code: str | None = None
     phone_national_number: str | None = None
-    role: Literal["patient", "doctor", "admin"] = "patient"
+    role: UserRole = "patient"
     verified: bool = False
     languages: list[str] = Field(default_factory=lambda: ["English"])
     specialties: list[str] = Field(default_factory=list)
@@ -310,7 +323,7 @@ class ThreadMessageRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("msg"))
     question_id: str
     actor_id: str
-    actor_role: Literal["patient", "doctor", "admin"]
+    actor_role: UserRole
     body: str
     message_mode: Literal["text", "voice"] = "text"
     attachment_ids: list[str] = Field(default_factory=list)
@@ -407,7 +420,7 @@ class BlogArticleCommentRecord(BaseModel):
     id: str = Field(default_factory=lambda: make_id("cmt"))
     actor_id: str
     actor_name: str = "MedicoHub user"
-    actor_role: Literal["patient", "doctor", "admin"] = "patient"
+    actor_role: UserRole = "patient"
     body: str
     parent_id: str | None = None
     message_mode: Literal["text", "voice"] = "text"
@@ -723,6 +736,295 @@ class SectionTranslationResponse(BaseModel):
     errorCode: str = ""
     message: str = ""
     detailsForAdminOnly: str = ""
+
+
+class GrowthEventInput(BaseModel):
+    event_name: str
+    anonymous_id: str | None = None
+    user_id: str | None = None
+    session_id: str | None = None
+    campaign_id: str | None = None
+    source: str | None = None
+    medium: str | None = None
+    platform: str | None = None
+    content_id: str | None = None
+    specialty_id: str | None = None
+    language: str | None = None
+    region: str | None = None
+    referrer: str | None = None
+    utm_source: str | None = None
+    utm_medium: str | None = None
+    utm_campaign: str | None = None
+    utm_content: str | None = None
+    utm_term: str | None = None
+    experiment_id: str | None = None
+    variant_id: str | None = None
+    app_version: str | None = None
+    device_category: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class GrowthEventRecord(GrowthEventInput):
+    id: str = Field(default_factory=lambda: make_id("gev"))
+    pseudonymous_user_key: str | None = None
+    timestamp: datetime = Field(default_factory=utc_now)
+
+
+class GrowthCampaignCreate(BaseModel):
+    actor_id: str
+    name: str
+    objective: Literal[
+        "awareness",
+        "registration",
+        "activation",
+        "article_engagement",
+        "question_submission",
+        "doctor_recruitment",
+        "caregiver_recruitment",
+        "migraine_diary_adoption",
+        "vestibular_module_adoption",
+        "newsletter_subscription",
+        "referral",
+        "re_engagement",
+    ] = "activation"
+    description: str = ""
+    audience_segment_ids: list[str] = Field(default_factory=list)
+    specialty_ids: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=lambda: ["English"])
+    regions: list[str] = Field(default_factory=list)
+    channels: list[str] = Field(default_factory=list)
+    start_date: str | None = None
+    end_date: str | None = None
+    owner_id: str | None = None
+    budget_limit: float | None = None
+    primary_metric: str = "activated_users"
+    secondary_metrics: list[str] = Field(default_factory=list)
+    target_value: float | None = None
+    content_ids: list[str] = Field(default_factory=list)
+    landing_page_ids: list[str] = Field(default_factory=list)
+    experiment_ids: list[str] = Field(default_factory=list)
+    hypothesis: str
+    target_audience: str
+    value_offered: str
+    primary_cta: str
+    minimum_observation_period_days: int = 14
+    source_content: str = ""
+    distribution_plan: str = ""
+    follow_up_sequence: str = ""
+
+
+class GrowthCampaignUpdate(BaseModel):
+    actor_id: str
+    status: Literal[
+        "draft",
+        "awaiting_review",
+        "approved",
+        "scheduled",
+        "active",
+        "paused",
+        "completed",
+        "archived",
+    ] | None = None
+    primary_metric: str | None = None
+    target_value: float | None = None
+    channels: list[str] | None = None
+    content_ids: list[str] | None = None
+
+
+class GrowthCampaignRecord(BaseModel):
+    id: str = Field(default_factory=lambda: make_id("gcmp"))
+    name: str
+    objective: str
+    description: str = ""
+    audience_segment_ids: list[str] = Field(default_factory=list)
+    specialty_ids: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    regions: list[str] = Field(default_factory=list)
+    channels: list[str] = Field(default_factory=list)
+    start_date: str | None = None
+    end_date: str | None = None
+    owner_id: str
+    budget_limit: float | None = None
+    status: str = "draft"
+    primary_metric: str
+    secondary_metrics: list[str] = Field(default_factory=list)
+    target_value: float | None = None
+    content_ids: list[str] = Field(default_factory=list)
+    landing_page_ids: list[str] = Field(default_factory=list)
+    experiment_ids: list[str] = Field(default_factory=list)
+    hypothesis: str
+    target_audience: str
+    value_offered: str
+    primary_cta: str
+    minimum_observation_period_days: int = 14
+    source_content: str = ""
+    distribution_plan: str = ""
+    follow_up_sequence: str = ""
+    created_by: str
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GrowthOpportunityCreate(BaseModel):
+    actor_id: str
+    title: str
+    source: str = "manual"
+    specialty: str = "General Health"
+    audience: Literal["patient", "doctor", "caregiver", "mixed"] = "patient"
+    language: str = "English"
+    region: str = ""
+    estimated_value: int = 50
+    urgency: Literal["low", "medium", "high"] = "medium"
+    medical_risk: Literal["low", "medium", "high"] = "medium"
+    source_reliability: Literal["unknown", "low", "medium", "high"] = "unknown"
+    existing_coverage: str = ""
+    proposed_formats: list[str] = Field(default_factory=list)
+    recommended_cta: str = ""
+    assigned_owner: str = ""
+    status: str = "new"
+
+
+class GrowthOpportunityRecord(GrowthOpportunityCreate):
+    id: str = Field(default_factory=lambda: make_id("gopp"))
+    detected_date: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GrowthContentDerivativeCreate(BaseModel):
+    actor_id: str
+    source_article_id: str
+    asset_type: Literal[
+        "social_post",
+        "instagram_carousel",
+        "short_video_script",
+        "linkedin_post",
+        "whatsapp_message",
+        "email_digest_item",
+        "push_notification_copy",
+        "landing_page_teaser",
+        "patient_faq",
+        "doctor_summary",
+    ]
+    platform: str = "MedicoHub"
+    title: str
+    body: str
+    campaign_id: str | None = None
+
+
+class GrowthContentDerivativeRecord(GrowthContentDerivativeCreate):
+    id: str = Field(default_factory=lambda: make_id("gder"))
+    source_article_version: str
+    source_article_review_status: str
+    source_article_review_date: str
+    approval_status: Literal["draft", "medical_review", "editorial_review", "approved", "review_required"] = "draft"
+    publication_status: Literal["not_scheduled", "scheduled", "published", "failed"] = "not_scheduled"
+    outdated_reason: str = ""
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GrowthIntegrationCreate(BaseModel):
+    actor_id: str
+    provider: str
+    display_name: str = ""
+    account_handle: str = ""
+    account_url: str = ""
+    auth_mode: Literal["manual_export", "oauth2", "api_key", "not_available"] = "manual_export"
+    scopes: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class GrowthIntegrationRecord(GrowthIntegrationCreate):
+    id: str = Field(default_factory=lambda: make_id("gint"))
+    owner_type: Literal["organisation", "doctor", "clinic"] = "organisation"
+    owner_id: str = "medicohub"
+    connected_by_user_id: str = ""
+    external_account_id: str = ""
+    external_account_name: str = ""
+    external_account_type: str = ""
+    page_id: str = ""
+    instagram_business_account_id: str = ""
+    channel_id: str = ""
+    available_accounts: list[dict] = Field(default_factory=list)
+    connection_status: Literal[
+        "not_connected",
+        "manual_export_ready",
+        "oauth_not_configured",
+        "oauth_pending",
+        "oauth_callback_received",
+        "connected",
+        "needs_reauth",
+        "disabled",
+    ] = "not_connected"
+    approval_status: Literal["draft", "pending_admin_approval", "approved", "rejected", "disabled"] = "draft"
+    publishing_mode: Literal["manual_export", "approval_required_api", "disabled"] = "manual_export"
+    token_status: Literal["none", "pending_exchange", "token_reference_configured", "expired", "revoked"] = "none"
+    token_reference: str = ""
+    token_expires_at: datetime | str | None = None
+    oauth_state: str = ""
+    oauth_code_verifier: str = ""
+    callback_url: str = ""
+    created_by: str
+    approved_by: str = ""
+    approved_at: datetime | None = None
+    last_connected_at: datetime | None = None
+    last_health_check_at: datetime | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GrowthIntegrationApprovalUpdate(BaseModel):
+    actor_id: str
+    approval_status: Literal["approved", "rejected", "disabled"]
+    notes: str = ""
+
+
+class GrowthIntegrationSelectionUpdate(BaseModel):
+    actor_id: str
+    external_account_id: str = ""
+    external_account_name: str = ""
+    external_account_type: str = ""
+    page_id: str = ""
+    instagram_business_account_id: str = ""
+    channel_id: str = ""
+    notes: str = ""
+
+
+class GrowthIntegrationOAuthStart(BaseModel):
+    actor_id: str
+    redirect_uri: str | None = None
+
+
+class GrowthPublishingRequestCreate(BaseModel):
+    actor_id: str
+    integration_id: str
+    derivative_id: str | None = None
+    campaign_id: str | None = None
+    provider: str
+    title: str
+    body: str
+    target_url: str = ""
+    scheduled_for: datetime | None = None
+
+
+class GrowthPublishingRequestRecord(GrowthPublishingRequestCreate):
+    id: str = Field(default_factory=lambda: make_id("gpub"))
+    status: Literal["draft", "pending_admin_approval", "approved", "rejected", "exported", "published", "failed"] = "pending_admin_approval"
+    approval_notes: str = ""
+    approved_by: str = ""
+    approved_at: datetime | None = None
+    published_by: str = ""
+    published_at: datetime | None = None
+    external_post_id: str = ""
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GrowthPublishingApprovalUpdate(BaseModel):
+    actor_id: str
+    status: Literal["approved", "rejected", "exported", "published", "failed"]
+    notes: str = ""
+    external_post_id: str = ""
 
 
 class AuditEvent(BaseModel):

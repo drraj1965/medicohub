@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MedicoHub Connect offline</title>
+    <meta name="theme-color" content="#0E7C70" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: #0f172a;
+        font-family: "Segoe UI", Avenir, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(14, 124, 112, 0.18), transparent 28rem),
+          linear-gradient(180deg, #f7fffb, #eef8f5);
+      }
+      main {
+        max-width: 620px;
+        padding: 32px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      }
+      h1 {
+        margin: 0 0 12px;
+      }
+      p {
+        line-height: 1.65;
+      }
+      .warning {
+        color: #9f1239;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You are offline</h1>
+      <p>
+        MedicoHub Connect cannot reach the internet right now. Reconnect and try again.
+        Previously cached app files may still open, but login, questions, videos, and
+        doctor replies need a connection.
+      </p>
+      <p class="warning">
+        This app is educational and is not for emergencies. If symptoms are urgent, seek
+        local emergency medical help.
+      </p>
+    </main>
+  </body>
+</html>

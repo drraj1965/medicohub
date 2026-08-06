@@ -181,6 +181,20 @@ class Repository(ABC):
     @abstractmethod
     def upsert_app_settings(self, settings: dict[str, Any]) -> dict[str, Any]: ...
 
+    @abstractmethod
+    def list_growth_collection(self, collection: str) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def create_growth_record(self, collection: str, record: dict[str, Any]) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def update_growth_record(
+        self,
+        collection: str,
+        record_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None: ...
+
 
 class LocalJsonRepository(Repository):
     def _db(self) -> dict[str, Any]:
@@ -540,6 +554,29 @@ class LocalJsonRepository(Repository):
         db["app_settings"] = settings
         save_db(db)
         return settings
+
+    def list_growth_collection(self, collection: str) -> list[dict[str, Any]]:
+        return self._db()[collection]
+
+    def create_growth_record(self, collection: str, record: dict[str, Any]) -> dict[str, Any]:
+        db = self._db()
+        db[collection].append(record)
+        save_db(db)
+        return record
+
+    def update_growth_record(
+        self,
+        collection: str,
+        record_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        db = self._db()
+        for record in db[collection]:
+            if record.get("id") == record_id:
+                record.update(updates)
+                save_db(db)
+                return record
+        return None
 
 
 class FirestoreRepository(Repository):
@@ -926,6 +963,28 @@ class FirestoreRepository(Repository):
     def upsert_app_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
         self._collection("app_config").document("app_settings").set(settings)
         return settings
+
+    def list_growth_collection(self, collection: str) -> list[dict[str, Any]]:
+        return [self._decode(doc.to_dict()) for doc in self._collection(collection).stream()]
+
+    def create_growth_record(self, collection: str, record: dict[str, Any]) -> dict[str, Any]:
+        self._collection(collection).document(record["id"]).set(record)
+        return record
+
+    def update_growth_record(
+        self,
+        collection: str,
+        record_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        ref = self._collection(collection).document(record_id)
+        snap = ref.get()
+        if not snap.exists:
+            return None
+        current = self._decode(snap.to_dict())
+        current.update(updates)
+        ref.set(current)
+        return current
 
     def _decode(self, value: Any) -> Any:
         if isinstance(value, datetime):

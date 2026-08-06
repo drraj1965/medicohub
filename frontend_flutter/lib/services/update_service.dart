@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,7 +61,8 @@ class UpdateService {
   static const String preferenceFrequencyKey = 'update_frequency';
   static const String preferenceLastCheckedKey = 'update_last_checked_at';
   static const String preferenceAutoOpenKey = 'update_auto_open_link';
-  static const String preferenceLastOpenedVersionKey = 'update_last_opened_version';
+  static const String preferenceLastOpenedVersionKey =
+      'update_last_opened_version';
 
   final http.Client _client;
 
@@ -129,6 +131,15 @@ class UpdateService {
   }
 
   String preferredDownloadUrl(UpdateInfo info) {
+    if (kIsWeb) {
+      if (info.releasePageUrl?.isNotEmpty ?? false) {
+        return info.releasePageUrl!;
+      }
+      if (info.downloadUrl.isNotEmpty) {
+        return info.downloadUrl;
+      }
+      return '';
+    }
     if (Platform.isAndroid) {
       if (info.releasePageUrl?.isNotEmpty ?? false) {
         return info.releasePageUrl!;
@@ -149,12 +160,17 @@ class UpdateService {
     return info.releasePageUrl ?? '';
   }
 
-  int compareVersions(String left, String right) => _compareVersions(left, right);
+  int compareVersions(String left, String right) =>
+      _compareVersions(left, right);
 
   int _compareVersions(String left, String right) {
-    final leftParts = left.split('.').map(int.tryParse).map((e) => e ?? 0).toList();
-    final rightParts = right.split('.').map(int.tryParse).map((e) => e ?? 0).toList();
-    final maxLength = leftParts.length > rightParts.length ? leftParts.length : rightParts.length;
+    final leftParts =
+        left.split('.').map(int.tryParse).map((e) => e ?? 0).toList();
+    final rightParts =
+        right.split('.').map(int.tryParse).map((e) => e ?? 0).toList();
+    final maxLength = leftParts.length > rightParts.length
+        ? leftParts.length
+        : rightParts.length;
     for (var index = 0; index < maxLength; index++) {
       final leftValue = index < leftParts.length ? leftParts[index] : 0;
       final rightValue = index < rightParts.length ? rightParts[index] : 0;

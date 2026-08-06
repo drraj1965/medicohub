@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import os
 import random
+import secrets
 import smtplib
 import hashlib
+import base64
+import json
 from html import escape
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from fastapi import HTTPException, UploadFile
+from cryptography.fernet import Fernet, InvalidToken
 import requests
 
 try:
@@ -37,6 +41,23 @@ try:
         DoctorResponseInput,
         DoctorResponseRecord,
         EducationItem,
+        GrowthCampaignCreate,
+        GrowthCampaignRecord,
+        GrowthCampaignUpdate,
+        GrowthContentDerivativeCreate,
+        GrowthContentDerivativeRecord,
+        GrowthEventInput,
+        GrowthEventRecord,
+        GrowthIntegrationApprovalUpdate,
+        GrowthIntegrationCreate,
+        GrowthIntegrationOAuthStart,
+        GrowthIntegrationRecord,
+        GrowthIntegrationSelectionUpdate,
+        GrowthOpportunityCreate,
+        GrowthOpportunityRecord,
+        GrowthPublishingApprovalUpdate,
+        GrowthPublishingRequestCreate,
+        GrowthPublishingRequestRecord,
         NotificationEvent,
         NotificationSettings,
         NotificationSettingsUpdate,
@@ -95,6 +116,23 @@ except ImportError:
         DoctorResponseInput,
         DoctorResponseRecord,
         EducationItem,
+        GrowthCampaignCreate,
+        GrowthCampaignRecord,
+        GrowthCampaignUpdate,
+        GrowthContentDerivativeCreate,
+        GrowthContentDerivativeRecord,
+        GrowthEventInput,
+        GrowthEventRecord,
+        GrowthIntegrationApprovalUpdate,
+        GrowthIntegrationCreate,
+        GrowthIntegrationOAuthStart,
+        GrowthIntegrationRecord,
+        GrowthIntegrationSelectionUpdate,
+        GrowthOpportunityCreate,
+        GrowthOpportunityRecord,
+        GrowthPublishingApprovalUpdate,
+        GrowthPublishingRequestCreate,
+        GrowthPublishingRequestRecord,
         NotificationEvent,
         NotificationSettings,
         NotificationSettingsUpdate,
@@ -171,6 +209,674 @@ ARTICLE_SECTION_LABELS = {
     "takeaways": "Key Takeaways",
     "disclaimer": "Disclaimer",
 }
+
+GROWTH_ADMIN_ROLES = {
+    "superAdmin",
+    "admin",
+    "growthManager",
+    "analyticsViewer",
+}
+GROWTH_MANAGER_ROLES = {"superAdmin", "admin", "growthManager"}
+SOCIAL_ACCOUNTS_MANAGE_PERMISSION = "socialAccounts.manage"
+SOCIAL_CONNECTIONS_COLLECTION = "social_connections"
+SOCIAL_TOKEN_VAULT_COLLECTION = "social_token_vault"
+GROWTH_SENSITIVE_METADATA_KEYS = {
+    "question_text",
+    "body",
+    "message",
+    "medical_notes",
+    "diagnosis",
+    "medications",
+    "medicine",
+    "symptoms",
+    "symptom_text",
+    "name",
+    "email",
+    "phone",
+    "mobile",
+    "address",
+}
+GROWTH_ACTIVATION_EVENTS = {
+    "article_saved",
+    "specialty_followed",
+    "doctor_followed",
+    "question_submitted",
+    "article_comment_created",
+    "comment_created",
+    "migraine_entry_created",
+    "vestibular_module_started",
+    "digest_subscribed",
+    "patient_profile_completed",
+    "article_shared",
+    "referral_created",
+}
+GROWTH_SOCIAL_CHANNELS: dict[str, dict] = {
+    "manual_export": {
+        "label": "Manual export",
+        "auth_mode": "manual_export",
+        "scopes": [],
+        "supports_api_publish": False,
+        "recommended": True,
+        "notes": "Safest first step: copy, review, and post through the platform UI.",
+    },
+    "linkedin": {
+        "label": "LinkedIn",
+        "auth_mode": "oauth2",
+        "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
+        "env_client_id": "LINKEDIN_CLIENT_ID",
+        "env_client_secret": "LINKEDIN_CLIENT_SECRET",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scopes": ["openid", "profile", "email"],
+        "supports_api_publish": True,
+        "recommended": True,
+        "notes": "Connect the official LinkedIn identity first. Posting permissions can be added after LinkedIn product access or review is approved.",
+    },
+    "meta": {
+        "label": "Meta: Facebook Page + Instagram",
+        "auth_mode": "oauth2",
+        "auth_url": "https://www.facebook.com/v21.0/dialog/oauth",
+        "env_client_id": "META_CLIENT_ID",
+        "env_client_secret": "META_CLIENT_SECRET",
+        "token_url": "https://graph.facebook.com/v21.0/oauth/access_token",
+        "scopes": ["pages_show_list"],
+        "supports_api_publish": True,
+        "recommended": True,
+        "notes": "Connect the official Facebook account first. Page and Instagram publishing permissions can be added after Meta app setup and review.",
+    },
+    "youtube": {
+        "label": "YouTube",
+        "auth_mode": "oauth2",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "env_client_id": "GOOGLE_OAUTH_CLIENT_ID",
+        "env_client_secret": "GOOGLE_OAUTH_CLIENT_SECRET",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": [
+            "https://www.googleapis.com/auth/youtube.upload",
+            "https://www.googleapis.com/auth/youtube.readonly",
+        ],
+        "supports_api_publish": True,
+        "recommended": True,
+        "notes": "Good for approved explainer videos and Shorts; publishing should stay approval-gated.",
+    },
+    "tiktok": {
+        "label": "TikTok",
+        "auth_mode": "oauth2",
+        "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
+        "env_client_id": "TIKTOK_CLIENT_KEY",
+        "scopes": ["video.upload", "video.publish"],
+        "supports_api_publish": True,
+        "recommended": False,
+        "notes": "Later-phase integration because medical content and API review are stricter.",
+    },
+    "google_business": {
+        "label": "Google Business Profile",
+        "auth_mode": "oauth2",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "env_client_id": "GOOGLE_OAUTH_CLIENT_ID",
+        "env_client_secret": "GOOGLE_OAUTH_CLIENT_SECRET",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": ["https://www.googleapis.com/auth/business.manage"],
+        "supports_api_publish": True,
+        "recommended": False,
+        "notes": "Useful for clinic profile updates, not broad community discussions.",
+    },
+    "reddit": {
+        "label": "Reddit",
+        "auth_mode": "oauth2",
+        "auth_url": "https://www.reddit.com/api/v1/authorize",
+        "env_client_id": "REDDIT_CLIENT_ID",
+        "scopes": ["identity", "submit", "read"],
+        "supports_api_publish": True,
+        "recommended": False,
+        "notes": "Consider for careful AMA-style education; subreddit rules and moderation matter.",
+    },
+    "x": {
+        "label": "X / Twitter",
+        "auth_mode": "oauth2",
+        "auth_url": "https://x.com/i/oauth2/authorize",
+        "env_client_id": "X_CLIENT_ID",
+        "env_client_secret": "X_CLIENT_SECRET",
+        "token_url": "https://api.x.com/2/oauth2/token",
+        "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
+        "supports_api_publish": True,
+        "recommended": False,
+        "notes": "Useful for short updates; API access level and pricing may limit automation. Posting stays approval-gated.",
+    },
+    "threads": {
+        "label": "Threads",
+        "auth_mode": "oauth2",
+        "auth_url": "https://threads.net/oauth/authorize",
+        "env_client_id": "THREADS_CLIENT_ID",
+        "scopes": ["threads_basic", "threads_content_publish"],
+        "supports_api_publish": True,
+        "recommended": False,
+        "notes": "Good for lightweight public conversation once Meta approval is in place.",
+    },
+    "whatsapp": {
+        "label": "WhatsApp",
+        "auth_mode": "manual_export",
+        "scopes": [],
+        "supports_api_publish": False,
+        "recommended": True,
+        "notes": "Use manual export or approved broadcast tooling; avoid unsolicited health marketing.",
+    },
+    "newsletter": {
+        "label": "Newsletter / Email",
+        "auth_mode": "manual_export",
+        "scopes": [],
+        "supports_api_publish": False,
+        "recommended": True,
+        "notes": "Already fits MedicoHub retention digests and consent-based campaigns.",
+    },
+}
+
+
+def _require_growth_access(actor_id: str, *, manage: bool = False) -> dict:
+    actor = repository.get_user(actor_id)
+    allowed_roles = GROWTH_MANAGER_ROLES if manage else GROWTH_ADMIN_ROLES
+    if actor is None or actor.get("role") not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Growth Studio access requires an authorised admin or growth role.")
+    return actor
+
+
+def _has_social_accounts_manage(actor: dict | None) -> bool:
+    if not actor:
+        return False
+    principal_ids = {
+        item.strip()
+        for item in os.getenv("MEDICOHUB_PRINCIPAL_ADMIN_USER_ID", "").split(",")
+        if item.strip()
+    }
+    principal_emails = {
+        item.strip().lower()
+        for item in os.getenv("MEDICOHUB_PRINCIPAL_ADMIN_EMAIL", "").split(",")
+        if item.strip()
+    }
+    return (
+        actor.get("role") == "superAdmin"
+        or SOCIAL_ACCOUNTS_MANAGE_PERMISSION in set(actor.get("permissions") or [])
+        or actor.get("id") in principal_ids
+        or str(actor.get("email", "")).lower() in principal_emails
+    )
+
+
+def _require_social_accounts_manage(actor_id: str) -> dict:
+    actor = _require_growth_access(actor_id, manage=True)
+    if not _has_social_accounts_manage(actor):
+        raise HTTPException(
+            status_code=403,
+            detail="Only superAdmin users or users with socialAccounts.manage can connect, replace, disconnect, or test official social accounts.",
+        )
+    return actor
+
+
+def _list_social_connections() -> list[dict]:
+    records = repository.list_growth_collection(SOCIAL_CONNECTIONS_COLLECTION)
+    if records:
+        return records
+    legacy = repository.list_growth_collection("growth_integrations")
+    migrated = []
+    for item in legacy:
+        record = _normalize_social_connection_record(item)
+        migrated.append(record)
+        try:
+            repository.create_growth_record(SOCIAL_CONNECTIONS_COLLECTION, record)
+        except Exception:
+            pass
+    return migrated
+
+
+def _update_social_connection(record_id: str, updates: dict) -> dict | None:
+    updated = repository.update_growth_record(SOCIAL_CONNECTIONS_COLLECTION, record_id, updates)
+    if updated is not None:
+        return updated
+    return repository.update_growth_record("growth_integrations", record_id, updates)
+
+
+def _normalize_social_connection_record(record: dict) -> dict:
+    normalized = dict(record)
+    provider = normalized.get("provider", "")
+    config = GROWTH_SOCIAL_CHANNELS.get(provider, {})
+    if (
+        normalized.get("auth_mode") == "oauth2"
+        and normalized.get("connection_status") == "oauth_not_configured"
+        and os.getenv(config.get("env_client_id", ""), "").strip()
+    ):
+        normalized["connection_status"] = "oauth_pending"
+    normalized.setdefault("owner_type", "organisation")
+    normalized.setdefault("owner_id", "medicohub")
+    normalized.setdefault("connected_by_user_id", normalized.get("created_by", ""))
+    normalized.setdefault("external_account_id", "")
+    normalized.setdefault("external_account_name", normalized.get("display_name", ""))
+    normalized.setdefault("external_account_type", "")
+    normalized.setdefault("page_id", "")
+    normalized.setdefault("instagram_business_account_id", "")
+    normalized.setdefault("channel_id", "")
+    normalized.setdefault("available_accounts", [])
+    normalized.setdefault("token_expires_at", None)
+    normalized.pop("token_reference", None)
+    normalized.pop("oauth_state", None)
+    normalized.pop("oauth_code_verifier", None)
+    return normalized
+
+
+def _token_fernet() -> Fernet:
+    raw_key = os.getenv("MEDICOHUB_TOKEN_ENCRYPTION_KEY", "").strip()
+    if raw_key:
+        return Fernet(raw_key.encode("utf-8"))
+    fallback_seed = (
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_B64")
+        or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        or os.getenv("MEDICOHUB_PRINCIPAL_ADMIN_USER_ID")
+        or "medicohub-local-token-vault"
+    )
+    digest = hashlib.sha256(fallback_seed.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _store_social_token_payload(connection_id: str, provider: str, payload: dict) -> str:
+    token_id = f"stok_{hashlib.sha256(f'{provider}:{connection_id}'.encode('utf-8')).hexdigest()[:20]}"
+    encrypted = _token_fernet().encrypt(json.dumps(payload, default=str).encode("utf-8")).decode("utf-8")
+    record = {
+        "id": token_id,
+        "connection_id": connection_id,
+        "provider": provider,
+        "encrypted_payload": encrypted,
+        "created_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
+    }
+    existing = next(
+        (item for item in repository.list_growth_collection(SOCIAL_TOKEN_VAULT_COLLECTION) if item.get("id") == token_id),
+        None,
+    )
+    if existing:
+        repository.update_growth_record(SOCIAL_TOKEN_VAULT_COLLECTION, token_id, record)
+    else:
+        repository.create_growth_record(SOCIAL_TOKEN_VAULT_COLLECTION, record)
+    return token_id
+
+
+def _load_social_token_payload(token_reference: str) -> dict | None:
+    if not token_reference:
+        return None
+    record = next(
+        (item for item in repository.list_growth_collection(SOCIAL_TOKEN_VAULT_COLLECTION) if item.get("id") == token_reference),
+        None,
+    )
+    if not record:
+        return None
+    try:
+        decrypted = _token_fernet().decrypt(str(record.get("encrypted_payload", "")).encode("utf-8"))
+    except (InvalidToken, ValueError):
+        return None
+    return json.loads(decrypted.decode("utf-8"))
+
+
+def _provider_secret(provider: str, key: str) -> str:
+    config = GROWTH_SOCIAL_CHANNELS.get(provider, {})
+    env_name = config.get(key, "")
+    return os.getenv(env_name, "").strip()
+
+
+def _parse_token_expiry(token_response: dict) -> str:
+    expires_in = token_response.get("expires_in")
+    if not expires_in:
+        return ""
+    try:
+        return (utc_now() + timedelta(seconds=int(expires_in))).isoformat()
+    except (TypeError, ValueError):
+        return ""
+
+
+def _oauth_code_verifier() -> str:
+    return secrets.token_urlsafe(48)[:96]
+
+
+def _oauth_code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+
+
+def _exchange_oauth_code_and_discover(provider: str, code: str, redirect_uri: str, connection_id: str) -> dict:
+    if provider == "linkedin":
+        return _exchange_linkedin_oauth_code(code, redirect_uri, connection_id)
+    if provider == "meta":
+        return _exchange_meta_oauth_code(code, redirect_uri, connection_id)
+    if provider in {"youtube", "google_business"}:
+        return _exchange_google_oauth_code(provider, code, redirect_uri, connection_id)
+    if provider == "x":
+        return _exchange_x_oauth_code(code, redirect_uri, connection_id)
+    raise HTTPException(status_code=400, detail=f"OAuth exchange is not implemented for {provider}.")
+
+
+def _exchange_linkedin_oauth_code(code: str, redirect_uri: str, connection_id: str) -> dict:
+    client_id = _provider_secret("linkedin", "env_client_id")
+    client_secret = _provider_secret("linkedin", "env_client_secret")
+    token_response = requests.post(
+        GROWTH_SOCIAL_CHANNELS["linkedin"]["token_url"],
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=20,
+    )
+    if token_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"LinkedIn token exchange failed: {token_response.text[:400]}")
+    token_payload = token_response.json()
+    access_token = token_payload.get("access_token", "")
+    userinfo = {}
+    organization_acls = {}
+    if access_token:
+        profile_response = requests.get(
+            "https://api.linkedin.com/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if profile_response.status_code < 400:
+            userinfo = profile_response.json()
+        org_response = requests.get(
+            "https://api.linkedin.com/rest/organizationAcls",
+            params={"q": "roleAssignee", "role": "ADMINISTRATOR", "state": "APPROVED", "count": 100},
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "LinkedIn-Version": "202606",
+                "X-Restli-Protocol-Version": "2.0.0",
+            },
+            timeout=20,
+        )
+        if org_response.status_code < 400:
+            organization_acls = org_response.json()
+    account_id = str(userinfo.get("sub") or "")
+    account_name = str(userinfo.get("name") or userinfo.get("localizedFirstName") or "LinkedIn account")
+    available_accounts = []
+    for acl in organization_acls.get("elements", []):
+        organization_urn = str(acl.get("organization") or acl.get("organizationTarget") or "")
+        if not organization_urn:
+            continue
+        organization_id = organization_urn.rsplit(":", 1)[-1]
+        organization_detail = acl.get("organization~") or acl.get("organizationTarget~") or {}
+        organization_name = (
+            organization_detail.get("localizedName")
+            or organization_detail.get("vanityName")
+            or f"LinkedIn organisation {organization_id}"
+        )
+        available_accounts.append(
+            {
+                "external_account_id": organization_id,
+                "external_account_name": organization_name,
+                "external_account_type": "linkedin_organization_page",
+                "provider": "linkedin",
+                "organization_urn": organization_urn,
+                "role": acl.get("role", "ADMINISTRATOR"),
+            }
+        )
+    available_accounts.append(
+        {
+            "external_account_id": account_id,
+            "external_account_name": account_name,
+            "external_account_type": "linkedin_member",
+            "provider": "linkedin",
+        }
+    )
+    first = available_accounts[0] if available_accounts else {}
+    token_reference = _store_social_token_payload(
+        connection_id,
+        "linkedin",
+        {"token_response": token_payload, "userinfo": userinfo, "organization_acls": organization_acls},
+    )
+    return {
+        "token_reference": token_reference,
+        "token_expires_at": _parse_token_expiry(token_payload),
+        "available_accounts": available_accounts,
+        "external_account_id": first.get("external_account_id", account_id),
+        "external_account_name": first.get("external_account_name", account_name),
+        "external_account_type": first.get("external_account_type", "linkedin_member"),
+    }
+
+
+def _exchange_meta_oauth_code(code: str, redirect_uri: str, connection_id: str) -> dict:
+    client_id = _provider_secret("meta", "env_client_id")
+    client_secret = _provider_secret("meta", "env_client_secret")
+    token_response = requests.get(
+        GROWTH_SOCIAL_CHANNELS["meta"]["token_url"],
+        params={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+        },
+        timeout=20,
+    )
+    if token_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Meta token exchange failed: {token_response.text[:400]}")
+    token_payload = token_response.json()
+    access_token = token_payload.get("access_token", "")
+    pages_payload = {}
+    available_accounts: list[dict] = []
+    page_tokens: dict[str, str] = {}
+    if access_token:
+        pages_response = requests.get(
+            "https://graph.facebook.com/v21.0/me/accounts",
+            params={
+                "fields": "id,name,access_token,tasks,instagram_business_account{id,username,name}",
+                "access_token": access_token,
+            },
+            timeout=20,
+        )
+        if pages_response.status_code < 400:
+            pages_payload = pages_response.json()
+            for page in pages_payload.get("data", []):
+                page_id = str(page.get("id") or "")
+                page_tokens[page_id] = page.get("access_token", "")
+                instagram = page.get("instagram_business_account") or {}
+                available_accounts.append(
+                    {
+                        "external_account_id": page_id,
+                        "external_account_name": page.get("name") or "Facebook Page",
+                        "external_account_type": "facebook_page",
+                        "provider": "meta",
+                        "page_id": page_id,
+                        "instagram_business_account_id": str(instagram.get("id") or ""),
+                        "instagram_username": instagram.get("username") or instagram.get("name") or "",
+                    }
+                )
+    first = available_accounts[0] if available_accounts else {}
+    token_reference = _store_social_token_payload(
+        connection_id,
+        "meta",
+        {"token_response": token_payload, "pages": pages_payload, "page_tokens": page_tokens},
+    )
+    return {
+        "token_reference": token_reference,
+        "token_expires_at": _parse_token_expiry(token_payload),
+        "available_accounts": available_accounts,
+        "external_account_id": first.get("external_account_id", ""),
+        "external_account_name": first.get("external_account_name", "Meta account"),
+        "external_account_type": first.get("external_account_type", "facebook_page" if first else ""),
+        "page_id": first.get("page_id", ""),
+        "instagram_business_account_id": first.get("instagram_business_account_id", ""),
+    }
+
+
+def _exchange_google_oauth_code(provider: str, code: str, redirect_uri: str, connection_id: str) -> dict:
+    client_id = _provider_secret(provider, "env_client_id")
+    client_secret = _provider_secret(provider, "env_client_secret")
+    token_response = requests.post(
+        GROWTH_SOCIAL_CHANNELS[provider]["token_url"],
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=20,
+    )
+    if token_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Google token exchange failed: {token_response.text[:400]}")
+    token_payload = token_response.json()
+    access_token = token_payload.get("access_token", "")
+    available_accounts: list[dict] = []
+    channels_payload = {}
+    if provider == "youtube" and access_token:
+        channels_response = requests.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            params={"part": "id,snippet", "mine": "true"},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if channels_response.status_code < 400:
+            channels_payload = channels_response.json()
+            for channel in channels_payload.get("items", []):
+                snippet = channel.get("snippet") or {}
+                available_accounts.append(
+                    {
+                        "external_account_id": channel.get("id") or "",
+                        "external_account_name": snippet.get("title") or "YouTube channel",
+                        "external_account_type": "youtube_channel",
+                        "provider": "youtube",
+                        "channel_id": channel.get("id") or "",
+                    }
+                )
+    first = available_accounts[0] if available_accounts else {}
+    token_reference = _store_social_token_payload(
+        connection_id,
+        provider,
+        {"token_response": token_payload, "channels": channels_payload},
+    )
+    return {
+        "token_reference": token_reference,
+        "token_expires_at": _parse_token_expiry(token_payload),
+        "available_accounts": available_accounts,
+        "external_account_id": first.get("external_account_id", ""),
+        "external_account_name": first.get("external_account_name", "Google account"),
+        "external_account_type": first.get("external_account_type", provider),
+        "channel_id": first.get("channel_id", ""),
+    }
+
+
+def _exchange_x_oauth_code(code: str, redirect_uri: str, connection_id: str) -> dict:
+    client_id = _provider_secret("x", "env_client_id")
+    client_secret = _provider_secret("x", "env_client_secret")
+    integration = next((item for item in _list_social_connections() if item.get("id") == connection_id), None)
+    code_verifier = str((integration or {}).get("oauth_code_verifier") or "")
+    if not code_verifier:
+        raise HTTPException(status_code=400, detail="Missing X OAuth PKCE verifier. Start OAuth again.")
+    token_response = requests.post(
+        GROWTH_SOCIAL_CHANNELS["x"]["token_url"],
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier,
+        },
+        auth=(client_id, client_secret),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=20,
+    )
+    if token_response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"X token exchange failed: {token_response.text[:400]}")
+    token_payload = token_response.json()
+    access_token = token_payload.get("access_token", "")
+    user_payload = {}
+    if access_token:
+        user_response = requests.get(
+            "https://api.x.com/2/users/me",
+            params={"user.fields": "id,name,username,profile_image_url,verified,verified_type"},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+        if user_response.status_code < 400:
+            user_payload = user_response.json()
+    user = user_payload.get("data") or {}
+    username = str(user.get("username") or "")
+    account_name = str(user.get("name") or (f"@{username}" if username else "X account"))
+    account_id = str(user.get("id") or "")
+    available_accounts = [
+        {
+            "external_account_id": account_id,
+            "external_account_name": account_name,
+            "external_account_type": "x_user",
+            "provider": "x",
+            "username": username,
+        }
+    ]
+    token_reference = _store_social_token_payload(
+        connection_id,
+        "x",
+        {"token_response": token_payload, "user": user_payload},
+    )
+    return {
+        "token_reference": token_reference,
+        "token_expires_at": _parse_token_expiry(token_payload),
+        "available_accounts": available_accounts,
+        "external_account_id": account_id,
+        "external_account_name": account_name,
+        "external_account_type": "x_user",
+    }
+
+
+def _pseudonymous_key(user_id: str | None) -> str | None:
+    if not user_id:
+        return None
+    salt = os.getenv("MEDICOHUB_ANALYTICS_SALT", "medicohub-local-analytics")
+    return hashlib.sha256(f"{salt}:{user_id}".encode("utf-8")).hexdigest()[:24]
+
+
+def _safe_growth_metadata(metadata: dict) -> dict:
+    clean: dict = {}
+    for raw_key, raw_value in metadata.items():
+        key = str(raw_key).strip()
+        if not key:
+            continue
+        lowered = key.lower()
+        if lowered in GROWTH_SENSITIVE_METADATA_KEYS or any(token in lowered for token in ["diagnos", "symptom", "medication", "email", "phone"]):
+            raise HTTPException(status_code=400, detail=f"Sensitive analytics metadata is not allowed: {key}")
+        if isinstance(raw_value, str) and len(raw_value) > 160:
+            raise HTTPException(status_code=400, detail=f"Analytics metadata value is too long: {key}")
+        clean[key] = raw_value
+    return clean
+
+
+def _growth_channel_catalog() -> list[dict]:
+    catalog = []
+    for provider, config in GROWTH_SOCIAL_CHANNELS.items():
+        client_id = os.getenv(config.get("env_client_id", ""), "")
+        client_secret = os.getenv(config.get("env_client_secret", ""), "") if config.get("env_client_secret") else ""
+        auth_mode = config.get("auth_mode", "manual_export")
+        oauth_configured = auth_mode != "oauth2" or bool(client_id)
+        if auth_mode == "oauth2" and config.get("env_client_secret"):
+            oauth_configured = bool(client_id and client_secret and client_id != client_secret)
+        catalog.append(
+            {
+                "provider": provider,
+                "label": config["label"],
+                "auth_mode": auth_mode,
+                "oauth_configured": oauth_configured,
+                "scopes": config.get("scopes", []),
+                "supports_api_publish": config.get("supports_api_publish", False),
+                "recommended": config.get("recommended", False),
+                "notes": config.get("notes", ""),
+            }
+        )
+    return catalog
+
+
+def _public_api_base_url() -> str:
+    return os.getenv("MEDICOHUB_PUBLIC_API_BASE_URL", "https://medicohub-backend.fly.dev").rstrip("/")
+
+
+def _growth_oauth_callback_url(provider: str) -> str:
+    provider = provider.strip().lower()
+    if provider == "meta":
+        return f"{_public_api_base_url()}/api/integrations/meta/callback"
+    return f"{_public_api_base_url()}/api/growth/oauth/{provider}/callback"
+
 
 ARTICLE_TRANSLATION_PROVIDER_VERSION = "microsoft-azure-v1"
 ARTICLE_TRANSLATION_WARNING = (
@@ -520,6 +1226,7 @@ def _serialize_user(user: dict) -> dict:
     clean.setdefault("email_subscribed", True)
     clean.setdefault("unsubscribed_at", None)
     clean.setdefault("resubscribed_at", None)
+    clean.setdefault("permissions", [])
     return clean
 
 
@@ -926,6 +1633,615 @@ def update_ad_campaign(campaign_id: str, payload: AdCampaignUpdate) -> dict:
         raise HTTPException(status_code=404, detail="Ad campaign not found.")
     emit_audit("ad_campaign", campaign_id, "updated", payload.actor_id, updated)
     return updated
+
+
+def ingest_growth_event(payload: GrowthEventInput) -> dict:
+    metadata = _safe_growth_metadata(payload.metadata)
+    event = GrowthEventRecord(
+        **payload.model_dump(exclude={"metadata"}),
+        metadata=metadata,
+        pseudonymous_user_key=_pseudonymous_key(payload.user_id),
+    ).model_dump(mode="json")
+    if any(existing.get("id") == event["id"] for existing in repository.list_growth_collection("growth_events")):
+        return event
+    repository.create_growth_record("growth_events", event)
+    if payload.campaign_id:
+        campaigns = repository.list_growth_collection("growth_campaigns")
+        for campaign in campaigns:
+            if campaign.get("id") == payload.campaign_id:
+                counters = dict(campaign.get("event_counts") or {})
+                counters[payload.event_name] = int(counters.get(payload.event_name, 0)) + 1
+                repository.update_growth_record(
+                    "growth_campaigns",
+                    payload.campaign_id,
+                    {"event_counts": counters, "updated_at": utc_now().isoformat()},
+                )
+                break
+    return event
+
+
+def list_growth_campaigns(actor_id: str) -> list[dict]:
+    _require_growth_access(actor_id)
+    return repository.list_growth_collection("growth_campaigns")
+
+
+def create_growth_campaign(payload: GrowthCampaignCreate) -> dict:
+    actor = _require_growth_access(payload.actor_id, manage=True)
+    if not payload.hypothesis.strip() or not payload.target_audience.strip() or not payload.primary_cta.strip():
+        raise HTTPException(status_code=400, detail="Campaigns require a hypothesis, target audience, and primary CTA.")
+    if payload.primary_metric.strip() == "registration_completed":
+        raise HTTPException(status_code=400, detail="Registration alone cannot be the Growth Studio activation metric.")
+    campaign = GrowthCampaignRecord(
+        **payload.model_dump(exclude={"actor_id", "owner_id"}),
+        owner_id=payload.owner_id or actor["id"],
+        created_by=payload.actor_id,
+    ).model_dump(mode="json")
+    repository.create_growth_record("growth_campaigns", campaign)
+    emit_audit("growth_campaign", campaign["id"], "created", payload.actor_id, campaign)
+    return campaign
+
+
+def update_growth_campaign(campaign_id: str, payload: GrowthCampaignUpdate) -> dict:
+    _require_growth_access(payload.actor_id, manage=True)
+    updates = payload.model_dump(exclude_none=True, exclude={"actor_id"})
+    if "primary_metric" in updates and updates["primary_metric"] == "registration_completed":
+        raise HTTPException(status_code=400, detail="Registration alone cannot be the Growth Studio activation metric.")
+    updates["updated_at"] = utc_now().isoformat()
+    updated = repository.update_growth_record("growth_campaigns", campaign_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Growth campaign not found.")
+    emit_audit("growth_campaign", campaign_id, "updated", payload.actor_id, updated)
+    return updated
+
+
+def list_growth_opportunities(actor_id: str) -> list[dict]:
+    _require_growth_access(actor_id)
+    opportunities = repository.list_growth_collection("growth_opportunities")
+    if opportunities:
+        return opportunities
+    generated: list[dict] = []
+    public_questions = [q for q in repository.list_questions() if q.get("is_public") and q.get("status") != "deleted"]
+    answered_titles = {
+        article.get("title", "").strip().lower()
+        for article in repository.list_blog_articles()
+        if article.get("status") == "published"
+    }
+    for question in public_questions[:8]:
+        title = question.get("title") or "Unanswered patient question"
+        generated.append(
+            GrowthOpportunityRecord(
+                actor_id=actor_id,
+                title=f"Answer recurring question: {title}",
+                source="medicohub_questions",
+                specialty=question.get("heading_group") or "General Health",
+                audience="patient",
+                language=question.get("language") or "English",
+                estimated_value=70 if title.strip().lower() not in answered_titles else 35,
+                urgency="high" if not question.get("responses") else "medium",
+                medical_risk="medium",
+                source_reliability="high",
+                existing_coverage="No title-level published match found." if title.strip().lower() not in answered_titles else "Possible published coverage exists.",
+                proposed_formats=["article", "FAQ", "discussion prompt"],
+                recommended_cta="Save this answer and follow the specialty for updates.",
+            ).model_dump(mode="json")
+        )
+    return generated
+
+
+def create_growth_opportunity(payload: GrowthOpportunityCreate) -> dict:
+    _require_growth_access(payload.actor_id, manage=True)
+    opportunity = GrowthOpportunityRecord(**payload.model_dump()).model_dump(mode="json")
+    repository.create_growth_record("growth_opportunities", opportunity)
+    emit_audit("growth_opportunity", opportunity["id"], "created", payload.actor_id, opportunity)
+    return opportunity
+
+
+def list_growth_derivatives(actor_id: str, source_article_id: str | None = None) -> list[dict]:
+    _require_growth_access(actor_id)
+    records = repository.list_growth_collection("growth_content_derivatives")
+    if source_article_id:
+        records = [record for record in records if record.get("source_article_id") == source_article_id]
+    return records
+
+
+def create_growth_derivative(payload: GrowthContentDerivativeCreate) -> dict:
+    _require_growth_access(payload.actor_id, manage=True)
+    article = next((item for item in repository.list_blog_articles() if item.get("id") == payload.source_article_id), None)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Source article not found.")
+    if article.get("status", "published") != "published":
+        raise HTTPException(status_code=400, detail="Promotional derivatives can only be created from approved/published articles.")
+    derivative = GrowthContentDerivativeRecord(
+        **payload.model_dump(),
+        source_article_version=article.get("updated_at") or article.get("created_at") or "",
+        source_article_review_status=article.get("status", "published"),
+        source_article_review_date=article.get("updated_at") or article.get("created_at") or "",
+    ).model_dump(mode="json")
+    repository.create_growth_record("growth_content_derivatives", derivative)
+    emit_audit("growth_derivative", derivative["id"], "created", payload.actor_id, derivative)
+    return derivative
+
+
+def mark_growth_derivatives_review_required(source_article_id: str, actor_id: str) -> None:
+    derivatives = repository.list_growth_collection("growth_content_derivatives")
+    for derivative in derivatives:
+        if derivative.get("source_article_id") != source_article_id:
+            continue
+        if derivative.get("publication_status") == "published":
+            continue
+        repository.update_growth_record(
+            "growth_content_derivatives",
+            derivative["id"],
+            {
+                "approval_status": "review_required",
+                "outdated_reason": "Source article was materially updated; verify derivative claims before scheduling.",
+                "updated_at": utc_now().isoformat(),
+            },
+        )
+        emit_audit("growth_derivative", derivative["id"], "review_required", actor_id, derivative)
+
+
+def list_growth_integration_catalog(actor_id: str) -> list[dict]:
+    actor = _require_growth_access(actor_id)
+    existing = {
+        item.get("provider"): _normalize_social_connection_record(item)
+        for item in _list_social_connections()
+        if item.get("provider")
+    }
+    catalog = []
+    for item in _growth_channel_catalog():
+        current = existing.get(item["provider"])
+        callback_url = ""
+        if item.get("auth_mode") == "oauth2":
+            callback_url = _growth_oauth_callback_url(item["provider"])
+        catalog.append(
+            {
+                **item,
+                "integration_id": current.get("id", "") if current else "",
+                "connection_status": current.get("connection_status", "not_connected") if current else "not_connected",
+                "approval_status": current.get("approval_status", "draft") if current else "draft",
+                "publishing_mode": current.get("publishing_mode", "manual_export") if current else "manual_export",
+                "callback_url": callback_url,
+                "can_manage_social_accounts": _has_social_accounts_manage(actor),
+            }
+        )
+    return catalog
+
+
+def list_growth_integrations(actor_id: str) -> list[dict]:
+    _require_growth_access(actor_id)
+    records = [_normalize_social_connection_record(item) for item in _list_social_connections()]
+    return sorted(records, key=lambda item: item.get("updated_at", ""), reverse=True)
+
+
+def create_growth_integration(payload: GrowthIntegrationCreate) -> dict:
+    actor = _require_social_accounts_manage(payload.actor_id)
+    provider = payload.provider.strip().lower()
+    config = GROWTH_SOCIAL_CHANNELS.get(provider)
+    if config is None:
+        raise HTTPException(status_code=400, detail="Unsupported growth integration provider.")
+    existing = [
+        item
+        for item in _list_social_connections()
+        if item.get("provider") == provider
+        and item.get("owner_type", "organisation") == "organisation"
+        and item.get("owner_id", "medicohub") == "medicohub"
+        and item.get("connection_status") != "disabled"
+    ]
+    if existing:
+        return _normalize_social_connection_record(existing[0])
+    auth_mode = payload.auth_mode if payload.auth_mode != "not_available" else config.get("auth_mode", "manual_export")
+    if auth_mode == "oauth2" and config.get("auth_mode") != "oauth2":
+        raise HTTPException(status_code=400, detail="This provider is not configured for OAuth publishing.")
+    connection_status = "manual_export_ready" if auth_mode == "manual_export" else "oauth_not_configured"
+    if auth_mode == "oauth2" and os.getenv(config.get("env_client_id", ""), ""):
+        connection_status = "oauth_pending"
+    publishing_mode = "manual_export" if auth_mode == "manual_export" else "approval_required_api"
+    integration = GrowthIntegrationRecord(
+        actor_id=payload.actor_id,
+        provider=provider,
+        display_name=payload.display_name or config["label"],
+        account_handle=payload.account_handle,
+        account_url=payload.account_url,
+        auth_mode=auth_mode,
+        scopes=payload.scopes or config.get("scopes", []),
+        notes=payload.notes,
+        owner_type="organisation",
+        owner_id="medicohub",
+        connected_by_user_id=actor["id"],
+        external_account_name=payload.display_name or config["label"],
+        connection_status=connection_status,
+        publishing_mode=publishing_mode,
+        callback_url=_growth_oauth_callback_url(provider),
+        created_by=actor["id"],
+    ).model_dump(mode="json")
+    repository.create_growth_record(SOCIAL_CONNECTIONS_COLLECTION, integration)
+    emit_audit("growth_integration", integration["id"], "created", payload.actor_id, _redact_growth_integration(integration))
+    return _normalize_social_connection_record(integration)
+
+
+def start_growth_integration_oauth(integration_id: str, payload: GrowthIntegrationOAuthStart) -> dict:
+    _require_social_accounts_manage(payload.actor_id)
+    integrations = _list_social_connections()
+    integration = next((item for item in integrations if item.get("id") == integration_id), None)
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Growth integration not found.")
+    provider = integration.get("provider", "")
+    config = GROWTH_SOCIAL_CHANNELS.get(provider)
+    if config is None or config.get("auth_mode") != "oauth2":
+        raise HTTPException(status_code=400, detail="This provider does not use OAuth.")
+    client_id = os.getenv(config.get("env_client_id", ""), "")
+    if not client_id:
+        raise HTTPException(status_code=409, detail=f"Configure {config.get('env_client_id')} on the backend before starting OAuth.")
+    client_secret = os.getenv(config.get("env_client_secret", ""), "").strip() if config.get("env_client_secret") else ""
+    if config.get("env_client_secret") and not client_secret:
+        raise HTTPException(status_code=409, detail=f"Configure {config.get('env_client_secret')} on the backend before starting OAuth.")
+    if config.get("env_client_secret") and client_id.strip() == client_secret:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{config.get('env_client_id')} and {config.get('env_client_secret')} are identical. "
+                "Re-import the provider's OAuth 2.0 Client ID and Client Secret as two different values."
+            ),
+        )
+    redirect_uri = payload.redirect_uri or _growth_oauth_callback_url(provider)
+    state = make_id("oauth")
+    # Use the current provider scope policy for OAuth starts. Older connection
+    # records can contain scopes that were later removed after provider review
+    # feedback, and reusing them can make every reconnect fail.
+    requested_scopes = config.get("scopes", []) or integration.get("scopes", [])
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(requested_scopes),
+        "state": state,
+    }
+    oauth_code_verifier = ""
+    if provider == "x":
+        oauth_code_verifier = _oauth_code_verifier()
+        params["code_challenge"] = _oauth_code_challenge(oauth_code_verifier)
+        params["code_challenge_method"] = "S256"
+    if provider in {"youtube", "google_business"}:
+        params["access_type"] = "offline"
+        params["prompt"] = "consent"
+        params["include_granted_scopes"] = "true"
+    if provider == "reddit":
+        params["duration"] = "permanent"
+    updates = {
+        "oauth_state": state,
+        "callback_url": redirect_uri,
+        "scopes": requested_scopes,
+        "oauth_code_verifier": oauth_code_verifier,
+        "connection_status": "oauth_pending",
+        "updated_at": utc_now().isoformat(),
+    }
+    updated = _update_social_connection(integration_id, updates)
+    emit_audit("growth_integration", integration_id, "oauth_started", payload.actor_id, _redact_growth_integration(updated or updates))
+    return {
+        "authorization_url": f"{config['auth_url']}?{urlencode(params, quote_via=quote)}",
+        "callback_url": redirect_uri,
+        "state": state,
+        "provider": provider,
+    }
+
+
+def complete_growth_integration_oauth(provider: str, state: str | None, code: str | None, error: str | None = None) -> dict:
+    provider = provider.strip().lower()
+    if not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth state.")
+    integrations = _list_social_connections()
+    integration = next(
+        (item for item in integrations if item.get("provider") == provider and item.get("oauth_state") == state),
+        None,
+    )
+    if integration is None:
+        raise HTTPException(status_code=404, detail="OAuth state not recognised.")
+    if error:
+        updates = {
+            "connection_status": "needs_reauth",
+            "token_status": "none",
+            "notes": f"OAuth callback error: {error}",
+            "oauth_code_verifier": "",
+            "updated_at": utc_now().isoformat(),
+        }
+        updated = _update_social_connection(integration["id"], updates)
+        emit_audit("growth_integration", integration["id"], "oauth_failed", integration.get("created_by", "system"), _redact_growth_integration(updated or updates))
+        return {"status": "failed", "provider": provider, "detail": error}
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing OAuth code.")
+    redirect_uri = integration.get("callback_url") or _growth_oauth_callback_url(provider)
+    discovery = _exchange_oauth_code_and_discover(provider, code, redirect_uri, integration["id"])
+    updates = {
+        "connection_status": "connected" if discovery.get("token_reference") else "oauth_callback_received",
+        "token_status": "token_reference_configured" if discovery.get("token_reference") else "pending_exchange",
+        "token_reference": discovery.get("token_reference", ""),
+        "token_expires_at": discovery.get("token_expires_at") or None,
+        "available_accounts": discovery.get("available_accounts", []),
+        "external_account_id": discovery.get("external_account_id", ""),
+        "external_account_name": discovery.get("external_account_name", integration.get("display_name", "")),
+        "external_account_type": discovery.get("external_account_type", ""),
+        "page_id": discovery.get("page_id", ""),
+        "instagram_business_account_id": discovery.get("instagram_business_account_id", ""),
+        "channel_id": discovery.get("channel_id", ""),
+        "oauth_state": "",
+        "oauth_code_verifier": "",
+        "last_connected_at": utc_now().isoformat(),
+        "last_health_check_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
+    }
+    updated = _update_social_connection(integration["id"], updates)
+    emit_audit("growth_integration", integration["id"], "oauth_callback_received", integration.get("created_by", "system"), _redact_growth_integration(updated or updates))
+    return {
+        "status": "connected",
+        "provider": provider,
+        "connection_id": integration["id"],
+        "available_accounts": updates["available_accounts"],
+        "next_step": "Return to MedicoHub Growth Studio and select/approve the official destination if needed.",
+    }
+
+
+def update_growth_integration_approval(integration_id: str, payload: GrowthIntegrationApprovalUpdate) -> dict:
+    _require_social_accounts_manage(payload.actor_id)
+    integration = next(
+        (item for item in _list_social_connections() if item.get("id") == integration_id),
+        None,
+    )
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Growth integration not found.")
+    updates = {
+        "approval_status": payload.approval_status,
+        "approved_by": payload.actor_id if payload.approval_status == "approved" else "",
+        "approved_at": utc_now().isoformat() if payload.approval_status == "approved" else None,
+        "notes": payload.notes or integration.get("notes", ""),
+        "updated_at": utc_now().isoformat(),
+    }
+    if payload.approval_status in {"disabled", "rejected"}:
+        updates["connection_status"] = "disabled" if payload.approval_status == "disabled" else integration.get("connection_status", "not_connected")
+    updated = _update_social_connection(integration_id, updates)
+    emit_audit("growth_integration", integration_id, "approval_updated", payload.actor_id, _redact_growth_integration(updated or updates))
+    return _normalize_social_connection_record(updated or updates)
+
+
+def update_growth_integration_selection(integration_id: str, payload: GrowthIntegrationSelectionUpdate) -> dict:
+    _require_social_accounts_manage(payload.actor_id)
+    integration = next(
+        (item for item in _list_social_connections() if item.get("id") == integration_id),
+        None,
+    )
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Social connection not found.")
+    updates = {
+        "external_account_id": payload.external_account_id,
+        "external_account_name": payload.external_account_name,
+        "external_account_type": payload.external_account_type,
+        "page_id": payload.page_id,
+        "instagram_business_account_id": payload.instagram_business_account_id,
+        "channel_id": payload.channel_id,
+        "notes": payload.notes or integration.get("notes", ""),
+        "updated_at": utc_now().isoformat(),
+    }
+    updated = _update_social_connection(integration_id, updates)
+    emit_audit("social_connection", integration_id, "destination_selected", payload.actor_id, _redact_growth_integration(updated or updates))
+    return _normalize_social_connection_record(updated or updates)
+
+
+def test_growth_integration_connection(integration_id: str, actor_id: str) -> dict:
+    _require_social_accounts_manage(actor_id)
+    integration = next(
+        (item for item in _list_social_connections() if item.get("id") == integration_id),
+        None,
+    )
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Social connection not found.")
+    config = GROWTH_SOCIAL_CHANNELS.get(integration.get("provider", ""), {})
+    oauth_ready = integration.get("auth_mode") != "oauth2" or bool(os.getenv(config.get("env_client_id", ""), ""))
+    token_payload = _load_social_token_payload(str(integration.get("token_reference", "")))
+    token_ready = integration.get("auth_mode") != "oauth2" or token_payload is not None
+    destination_ready = integration.get("auth_mode") == "manual_export" or any(
+        integration.get(key) for key in ["external_account_id", "page_id", "channel_id"]
+    )
+    status = "healthy" if oauth_ready and token_ready and destination_ready else "needs_attention"
+    updates = {
+        "last_health_check_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
+    }
+    updated = _update_social_connection(integration_id, updates) or integration
+    emit_audit(
+        "social_connection",
+        integration_id,
+        "health_checked",
+        actor_id,
+        {"status": status, "oauth_ready": oauth_ready, "token_ready": token_ready, "destination_ready": destination_ready},
+    )
+    return {
+        "status": status,
+        "provider": integration.get("provider"),
+        "connection_status": updated.get("connection_status"),
+        "approval_status": updated.get("approval_status"),
+        "oauth_ready": oauth_ready,
+        "token_ready": token_ready,
+        "destination_ready": destination_ready,
+        "last_health_check_at": updates["last_health_check_at"],
+    }
+
+
+def list_growth_publishing_requests(actor_id: str) -> list[dict]:
+    _require_growth_access(actor_id)
+    records = repository.list_growth_collection("growth_publishing_requests")
+    return sorted(records, key=lambda item: item.get("updated_at", ""), reverse=True)
+
+
+def create_growth_publishing_request(payload: GrowthPublishingRequestCreate) -> dict:
+    _require_growth_access(payload.actor_id, manage=True)
+    integration = next(
+        (item for item in _list_social_connections() if item.get("id") == payload.integration_id),
+        None,
+    )
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Growth integration not found.")
+    if integration.get("approval_status") != "approved":
+        raise HTTPException(status_code=400, detail="Approve the integration before creating publish requests.")
+    request = GrowthPublishingRequestRecord(**payload.model_dump()).model_dump(mode="json")
+    repository.create_growth_record("growth_publishing_requests", request)
+    emit_audit("growth_publish_request", request["id"], "created", payload.actor_id, request)
+    return request
+
+
+def update_growth_publishing_request(publish_id: str, payload: GrowthPublishingApprovalUpdate) -> dict:
+    if payload.status in {"approved", "exported", "published", "failed"}:
+        _require_social_accounts_manage(payload.actor_id)
+    else:
+        _require_growth_access(payload.actor_id, manage=True)
+    updates = {
+        "status": payload.status,
+        "approval_notes": payload.notes,
+        "updated_at": utc_now().isoformat(),
+    }
+    if payload.status in {"approved", "rejected"}:
+        updates["approved_by"] = payload.actor_id
+        updates["approved_at"] = utc_now().isoformat()
+    if payload.status in {"exported", "published", "failed"}:
+        updates["published_by"] = payload.actor_id
+        updates["published_at"] = utc_now().isoformat()
+        updates["external_post_id"] = payload.external_post_id
+    updated = repository.update_growth_record("growth_publishing_requests", publish_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Growth publishing request not found.")
+    emit_audit("growth_publish_request", publish_id, "status_updated", payload.actor_id, updated)
+    return updated
+
+
+def _redact_growth_integration(record: dict) -> dict:
+    clean = dict(record)
+    if clean.get("token_reference"):
+        clean["token_reference"] = "[stored-reference]"
+    if clean.get("oauth_state"):
+        clean["oauth_state"] = "[oauth-state]"
+    if clean.get("oauth_code_verifier"):
+        clean["oauth_code_verifier"] = "[pkce-verifier]"
+    return clean
+
+
+def _placeholder_discovered_accounts(provider: str) -> list[dict]:
+    if provider == "meta":
+        return [
+            {
+                "external_account_type": "facebook_page",
+                "selection_required": True,
+                "note": "After token exchange, populate controlled Facebook Pages here and select the official MedicoHub Page.",
+            },
+            {
+                "external_account_type": "instagram_business_account",
+                "selection_required": True,
+                "note": "After selecting a Facebook Page, populate the linked Instagram professional account here.",
+            },
+        ]
+    if provider == "youtube":
+        return [
+            {
+                "external_account_type": "youtube_channel",
+                "selection_required": True,
+                "note": "After token exchange, populate the authenticated YouTube channels here.",
+            }
+        ]
+    if provider == "linkedin":
+        return [
+            {
+                "external_account_type": "linkedin_member_or_organisation",
+                "selection_required": True,
+                "note": "After token exchange, select the official LinkedIn account or organisation Page.",
+            }
+        ]
+    if provider == "x":
+        return [
+            {
+                "external_account_type": "x_user",
+                "selection_required": True,
+                "note": "After token exchange, select the official X account.",
+            }
+        ]
+    return []
+
+
+def growth_overview(actor_id: str) -> dict:
+    _require_growth_access(actor_id)
+    users = repository.list_users()
+    questions = repository.list_questions()
+    articles = repository.list_blog_articles()
+    events = repository.list_growth_collection("growth_events")
+    campaigns = repository.list_growth_collection("growth_campaigns")
+    referrals = repository.list_growth_collection("growth_referrals")
+    now = utc_now()
+
+    def within_days(value: str | None, days: int) -> bool:
+        if not value:
+            return False
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return now - parsed <= timedelta(days=days)
+
+    event_counts: dict[str, int] = {}
+    sources: dict[str, int] = {}
+    content: dict[str, int] = {}
+    activated_keys: set[str] = set()
+    for event in events:
+        name = event.get("event_name", "")
+        event_counts[name] = event_counts.get(name, 0) + 1
+        source = event.get("source") or event.get("utm_source") or "direct"
+        sources[source] = sources.get(source, 0) + 1
+        content_id = event.get("content_id")
+        if content_id:
+            content[content_id] = content.get(content_id, 0) + 1
+        if name in GROWTH_ACTIVATION_EVENTS:
+            key = event.get("pseudonymous_user_key") or event.get("anonymous_id")
+            if key:
+                activated_keys.add(key)
+
+    registered_users = [user for user in users if user.get("role") != "admin"]
+    meaningful_comments = sum(
+        len([comment for comment in article.get("comments", []) if comment.get("moderation_state", "visible") == "visible"])
+        for article in articles
+    )
+    seven_day_returning = len([event for event in events if event.get("event_name") == "return_session" and within_days(event.get("timestamp"), 7)])
+    thirty_day_returning = len([event for event in events if event.get("event_name") == "return_session" and within_days(event.get("timestamp"), 30)])
+    return {
+        "date_range": "all_available",
+        "sample_size": {
+            "users": len(registered_users),
+            "events": len(events),
+            "campaigns": len(campaigns),
+            "articles": len(articles),
+            "questions": len(questions),
+        },
+        "metrics": {
+            "new_registrations": len(registered_users),
+            "activated_users": len(activated_keys),
+            "activation_rate": round((len(activated_keys) / len(registered_users)) * 100, 1) if registered_users else 0,
+            "daily_active_users": len({event.get("pseudonymous_user_key") for event in events if within_days(event.get("timestamp"), 1) and event.get("pseudonymous_user_key")}),
+            "weekly_active_users": len({event.get("pseudonymous_user_key") for event in events if within_days(event.get("timestamp"), 7) and event.get("pseudonymous_user_key")}),
+            "monthly_active_users": len({event.get("pseudonymous_user_key") for event in events if within_days(event.get("timestamp"), 30) and event.get("pseudonymous_user_key")}),
+            "seven_day_retention": seven_day_returning,
+            "thirty_day_retention": thirty_day_returning,
+            "articles_viewed": event_counts.get("article_viewed", 0),
+            "articles_saved": event_counts.get("article_saved", 0),
+            "meaningful_comments": meaningful_comments,
+            "questions_submitted": len([q for q in questions if q.get("status") != "deleted"]),
+            "doctor_contributions": len([article for article in articles if article.get("author_id")]),
+            "shares": event_counts.get("article_shared", 0) + event_counts.get("referral_shared", 0),
+            "referral_registrations": event_counts.get("referred_registration", 0),
+            "referral_activations": event_counts.get("referred_activation", 0),
+        },
+        "top_sources": sorted(sources.items(), key=lambda item: item[1], reverse=True)[:8],
+        "top_content": sorted(content.items(), key=lambda item: item[1], reverse=True)[:8],
+        "campaigns": campaigns,
+        "referrals_sample_size": len(referrals),
+        "small_sample_warning": len(events) < 100,
+    }
 
 
 def _normalize_question(question: dict) -> dict:
@@ -1623,8 +2939,18 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
     existing_consent = existing.get("consent") if existing else None
     existing_created_at = existing.get("created_at") if existing else utc_now()
     existing_password = existing.get("password", "Passw0rd!") if existing else "Passw0rd!"
+    existing_permissions = existing.get("permissions", []) if existing else []
+    allowlisted_admin = next(
+        (
+            admin
+            for admin in ADMIN_SEED
+            if _normalize_email(admin["email"]) == _normalize_email(payload.email)
+            or _normalize_phone(admin["phone_number"]) == _normalize_phone(phone_number)
+        ),
+        None,
+    )
 
-    role = payload.role
+    role = "admin" if allowlisted_admin is not None else payload.role
     verified = bool(payload.verified)
     can_manage_doctors = False
     can_moderate_content = False
@@ -1636,16 +2962,7 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
     specialties = payload.specialties or []
 
     if role == "admin":
-        allowlisted = next(
-            (
-                admin
-                for admin in ADMIN_SEED
-                if _normalize_email(admin["email"]) == _normalize_email(payload.email)
-                or _normalize_phone(admin["phone_number"]) == _normalize_phone(payload.phone_number)
-            ),
-            None,
-        )
-        if allowlisted is None:
+        if allowlisted_admin is None:
             raise HTTPException(
                 status_code=403,
                 detail="This email or phone number is not on the MedicoHub admin allowlist.",
@@ -1654,12 +2971,12 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         can_manage_doctors = True
         can_moderate_content = True
         doctor_status = "active"
-        display_name = allowlisted["display_name"]
-        phone_number = allowlisted["phone_number"]
-        phone_country_code = allowlisted.get("phone_country_code")
-        phone_national_number = allowlisted.get("phone_national_number")
-        specialties = allowlisted["specialties"]
-        languages = allowlisted["languages"]
+        display_name = allowlisted_admin["display_name"]
+        phone_number = allowlisted_admin["phone_number"]
+        phone_country_code = allowlisted_admin.get("phone_country_code")
+        phone_national_number = allowlisted_admin.get("phone_national_number")
+        specialties = allowlisted_admin["specialties"]
+        languages = allowlisted_admin["languages"]
     elif role == "doctor":
         invited_record = None
         if existing_by_identity is not None and existing_by_identity["role"] in {"doctor", "admin"}:
@@ -1700,6 +3017,7 @@ def upsert_user_profile(payload: UserProfileUpsertRequest) -> dict:
         "doctor_status": doctor_status,
         "can_manage_doctors": can_manage_doctors,
         "can_moderate_content": can_moderate_content,
+        "permissions": existing_permissions,
         "invited_by": invited_by,
         "created_at": existing_created_at,
         "communication_preferences": _communication_preferences(existing or {}),
@@ -2238,6 +3556,7 @@ def update_blog_article(article_id: str, payload: BlogArticleUpdate) -> dict:
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found.")
     emit_audit("blog_article", article_id, "updated", payload.actor_id, updates)
+    mark_growth_derivatives_review_required(article_id, payload.actor_id)
     return {
         **article,
         "author_name": repository.get_user(article["author_id"]).get("display_name", "Unknown doctor")

@@ -5,7 +5,7 @@
 Run from PowerShell:
 
 ```powershell
-cd "C:\Users\drpha\Documents\Aster\neurolitApp\neurolitApp-April23\doctor_forum_app"
+cd "D:\Rajshekher-Projects\Aster\doctor_forum_app"
 .\scripts\store_release_android.ps1
 ```
 
@@ -36,7 +36,7 @@ Upload the `.aab` in Google Play Console using an internal test release first.
 Run from PowerShell:
 
 ```powershell
-cd "C:\Users\drpha\Documents\Aster\neurolitApp\neurolitApp-April23\doctor_forum_app"
+cd "D:\Rajshekher-Projects\Aster\doctor_forum_app"
 .\scripts\deploy_backend_fly_image.ps1 -Tag store-release-1
 ```
 
@@ -87,4 +87,3 @@ Do not commit:
 - `frontend_flutter/ios/Runner/GoogleService-Info.plist`
 - generated build folders
 - `backend_fastapi/data/audit.log.jsonl`
-

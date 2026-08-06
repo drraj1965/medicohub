@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
@@ -9,6 +10,10 @@ class AudioRecorderService {
   String? _currentPath;
 
   Future<void> start() async {
+    if (kIsWeb) {
+      throw Exception(
+          'Audio note recording is not available in the web build.');
+    }
     final status = await Permission.microphone.request();
     if (!status.isGranted) {
       throw Exception('Microphone permission denied.');
@@ -41,6 +46,9 @@ class AudioRecorderService {
     if (finalPath == null || finalPath.isEmpty) {
       throw Exception('Recording file was not created.');
     }
+    if (kIsWeb) {
+      return finalPath;
+    }
 
     final file = File(finalPath);
     if (!await file.exists()) {
@@ -54,7 +62,7 @@ class AudioRecorderService {
     try {
       final path = await _recorder.stop();
       final finalPath = path ?? _currentPath;
-      if (finalPath != null && finalPath.isNotEmpty) {
+      if (!kIsWeb && finalPath != null && finalPath.isNotEmpty) {
         final file = File(finalPath);
         if (await file.exists()) {
           await file.delete();

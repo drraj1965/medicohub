@@ -13,6 +13,7 @@ class UserProfile {
     this.doctorStatus = 'not_applicable',
     this.canManageDoctors = false,
     this.canModerateContent = false,
+    this.permissions = const [],
     this.communicationPreferences = const <String, bool>{},
     this.emailSubscribed = true,
     this.createdAt = '',
@@ -33,6 +34,7 @@ class UserProfile {
   final String doctorStatus;
   final bool canManageDoctors;
   final bool canModerateContent;
+  final List<String> permissions;
   final Map<String, bool> communicationPreferences;
   final bool emailSubscribed;
   final String createdAt;
@@ -40,6 +42,15 @@ class UserProfile {
   final String lastLoginAt;
 
   bool get isAdmin => role == 'admin';
+  bool get canAccessGrowthStudio =>
+      role == 'admin' ||
+      role == 'superAdmin' ||
+      role == 'growthManager' ||
+      role == 'analyticsViewer';
+  bool get canManageGrowthStudio =>
+      role == 'admin' || role == 'superAdmin' || role == 'growthManager';
+  bool get canManageSocialAccounts =>
+      role == 'superAdmin' || permissions.contains('socialAccounts.manage');
   bool get isDoctor => role == 'doctor' || role == 'admin';
   bool get isPatient => role == 'patient';
 
@@ -62,6 +73,9 @@ class UserProfile {
       doctorStatus: json['doctor_status'] as String? ?? 'not_applicable',
       canManageDoctors: json['can_manage_doctors'] as bool? ?? false,
       canModerateContent: json['can_moderate_content'] as bool? ?? false,
+      permissions: (json['permissions'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
       communicationPreferences: ((json['communication_preferences'] ??
                   json['communicationPreferences']) as Map<String, dynamic>? ??
               const <String, dynamic>{})
@@ -901,6 +915,357 @@ class AdCampaign {
       priority: json['priority'] as int? ?? 50,
       active: json['active'] as bool? ?? true,
       createdBy: json['created_by'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
+    );
+  }
+}
+
+class GrowthOverview {
+  const GrowthOverview({
+    required this.dateRange,
+    required this.sampleSize,
+    required this.metrics,
+    required this.topSources,
+    required this.topContent,
+    required this.smallSampleWarning,
+  });
+
+  final String dateRange;
+  final Map<String, int> sampleSize;
+  final Map<String, num> metrics;
+  final List<MapEntry<String, int>> topSources;
+  final List<MapEntry<String, int>> topContent;
+  final bool smallSampleWarning;
+
+  factory GrowthOverview.fromJson(Map<String, dynamic> json) {
+    Map<String, int> intMap(String key) =>
+        ((json[key] ?? const <String, dynamic>{}) as Map<String, dynamic>).map(
+          (entryKey, value) =>
+              MapEntry(entryKey, (value as num?)?.toInt() ?? 0),
+        );
+    List<MapEntry<String, int>> pairList(String key) =>
+        (json[key] as List<dynamic>? ?? const [])
+            .whereType<List<dynamic>>()
+            .map((item) => MapEntry(
+                  item.isNotEmpty ? item[0].toString() : '',
+                  item.length > 1 ? ((item[1] as num?)?.toInt() ?? 0) : 0,
+                ))
+            .where((entry) => entry.key.isNotEmpty)
+            .toList();
+    return GrowthOverview(
+      dateRange: json['date_range'] as String? ?? 'all_available',
+      sampleSize: intMap('sample_size'),
+      metrics: ((json['metrics'] ?? const <String, dynamic>{})
+              as Map<String, dynamic>)
+          .map((key, value) => MapEntry(key, (value as num?) ?? 0)),
+      topSources: pairList('top_sources'),
+      topContent: pairList('top_content'),
+      smallSampleWarning: json['small_sample_warning'] as bool? ?? false,
+    );
+  }
+}
+
+class GrowthCampaign {
+  const GrowthCampaign({
+    required this.id,
+    required this.name,
+    required this.objective,
+    required this.status,
+    required this.primaryMetric,
+    required this.targetAudience,
+    required this.primaryCta,
+    required this.channels,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String objective;
+  final String status;
+  final String primaryMetric;
+  final String targetAudience;
+  final String primaryCta;
+  final List<String> channels;
+  final String createdAt;
+  final String updatedAt;
+
+  factory GrowthCampaign.fromJson(Map<String, dynamic> json) {
+    return GrowthCampaign(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      objective: json['objective'] as String? ?? 'activation',
+      status: json['status'] as String? ?? 'draft',
+      primaryMetric: json['primary_metric'] as String? ?? 'activated_users',
+      targetAudience: json['target_audience'] as String? ?? '',
+      primaryCta: json['primary_cta'] as String? ?? '',
+      channels: (json['channels'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      createdAt: json['created_at'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
+    );
+  }
+}
+
+class GrowthOpportunity {
+  const GrowthOpportunity({
+    required this.id,
+    required this.title,
+    required this.source,
+    required this.specialty,
+    required this.audience,
+    required this.language,
+    required this.estimatedValue,
+    required this.urgency,
+    required this.medicalRisk,
+    required this.status,
+    required this.recommendedCta,
+  });
+
+  final String id;
+  final String title;
+  final String source;
+  final String specialty;
+  final String audience;
+  final String language;
+  final int estimatedValue;
+  final String urgency;
+  final String medicalRisk;
+  final String status;
+  final String recommendedCta;
+
+  factory GrowthOpportunity.fromJson(Map<String, dynamic> json) {
+    return GrowthOpportunity(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      source: json['source'] as String? ?? 'manual',
+      specialty: json['specialty'] as String? ?? 'General Health',
+      audience: json['audience'] as String? ?? 'patient',
+      language: json['language'] as String? ?? 'English',
+      estimatedValue: json['estimated_value'] as int? ?? 0,
+      urgency: json['urgency'] as String? ?? 'medium',
+      medicalRisk: json['medical_risk'] as String? ?? 'medium',
+      status: json['status'] as String? ?? 'new',
+      recommendedCta: json['recommended_cta'] as String? ?? '',
+    );
+  }
+}
+
+class GrowthDerivative {
+  const GrowthDerivative({
+    required this.id,
+    required this.sourceArticleId,
+    required this.assetType,
+    required this.platform,
+    required this.title,
+    required this.approvalStatus,
+    required this.publicationStatus,
+    required this.outdatedReason,
+  });
+
+  final String id;
+  final String sourceArticleId;
+  final String assetType;
+  final String platform;
+  final String title;
+  final String approvalStatus;
+  final String publicationStatus;
+  final String outdatedReason;
+
+  factory GrowthDerivative.fromJson(Map<String, dynamic> json) {
+    return GrowthDerivative(
+      id: json['id'] as String? ?? '',
+      sourceArticleId: json['source_article_id'] as String? ?? '',
+      assetType: json['asset_type'] as String? ?? '',
+      platform: json['platform'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      approvalStatus: json['approval_status'] as String? ?? 'draft',
+      publicationStatus:
+          json['publication_status'] as String? ?? 'not_scheduled',
+      outdatedReason: json['outdated_reason'] as String? ?? '',
+    );
+  }
+}
+
+class GrowthIntegrationCatalogItem {
+  const GrowthIntegrationCatalogItem({
+    required this.provider,
+    required this.label,
+    required this.authMode,
+    required this.oauthConfigured,
+    required this.scopes,
+    required this.supportsApiPublish,
+    required this.recommended,
+    required this.notes,
+    required this.integrationId,
+    required this.connectionStatus,
+    required this.approvalStatus,
+    required this.publishingMode,
+    required this.callbackUrl,
+    required this.canManageSocialAccounts,
+  });
+
+  final String provider;
+  final String label;
+  final String authMode;
+  final bool oauthConfigured;
+  final List<String> scopes;
+  final bool supportsApiPublish;
+  final bool recommended;
+  final String notes;
+  final String integrationId;
+  final String connectionStatus;
+  final String approvalStatus;
+  final String publishingMode;
+  final String callbackUrl;
+  final bool canManageSocialAccounts;
+
+  factory GrowthIntegrationCatalogItem.fromJson(Map<String, dynamic> json) {
+    return GrowthIntegrationCatalogItem(
+      provider: json['provider'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      authMode: json['auth_mode'] as String? ?? 'manual_export',
+      oauthConfigured: json['oauth_configured'] as bool? ?? false,
+      scopes: (json['scopes'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      supportsApiPublish: json['supports_api_publish'] as bool? ?? false,
+      recommended: json['recommended'] as bool? ?? false,
+      notes: json['notes'] as String? ?? '',
+      integrationId: json['integration_id'] as String? ?? '',
+      connectionStatus: json['connection_status'] as String? ?? 'not_connected',
+      approvalStatus: json['approval_status'] as String? ?? 'draft',
+      publishingMode: json['publishing_mode'] as String? ?? 'manual_export',
+      callbackUrl: json['callback_url'] as String? ?? '',
+      canManageSocialAccounts:
+          json['can_manage_social_accounts'] as bool? ?? false,
+    );
+  }
+}
+
+class GrowthIntegration {
+  const GrowthIntegration({
+    required this.id,
+    required this.provider,
+    required this.ownerType,
+    required this.ownerId,
+    required this.displayName,
+    required this.accountHandle,
+    required this.accountUrl,
+    required this.externalAccountId,
+    required this.externalAccountName,
+    required this.externalAccountType,
+    required this.pageId,
+    required this.instagramBusinessAccountId,
+    required this.channelId,
+    required this.authMode,
+    required this.connectionStatus,
+    required this.approvalStatus,
+    required this.publishingMode,
+    required this.tokenStatus,
+    required this.callbackUrl,
+    required this.scopes,
+    required this.availableAccounts,
+    required this.notes,
+    required this.lastHealthCheckAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String provider;
+  final String ownerType;
+  final String ownerId;
+  final String displayName;
+  final String accountHandle;
+  final String accountUrl;
+  final String externalAccountId;
+  final String externalAccountName;
+  final String externalAccountType;
+  final String pageId;
+  final String instagramBusinessAccountId;
+  final String channelId;
+  final String authMode;
+  final String connectionStatus;
+  final String approvalStatus;
+  final String publishingMode;
+  final String tokenStatus;
+  final String callbackUrl;
+  final List<String> scopes;
+  final List<Map<String, dynamic>> availableAccounts;
+  final String notes;
+  final String lastHealthCheckAt;
+  final String updatedAt;
+
+  factory GrowthIntegration.fromJson(Map<String, dynamic> json) {
+    return GrowthIntegration(
+      id: json['id'] as String? ?? '',
+      provider: json['provider'] as String? ?? '',
+      ownerType: json['owner_type'] as String? ?? 'organisation',
+      ownerId: json['owner_id'] as String? ?? 'medicohub',
+      displayName: json['display_name'] as String? ?? '',
+      accountHandle: json['account_handle'] as String? ?? '',
+      accountUrl: json['account_url'] as String? ?? '',
+      externalAccountId: json['external_account_id'] as String? ?? '',
+      externalAccountName: json['external_account_name'] as String? ?? '',
+      externalAccountType: json['external_account_type'] as String? ?? '',
+      pageId: json['page_id'] as String? ?? '',
+      instagramBusinessAccountId:
+          json['instagram_business_account_id'] as String? ?? '',
+      channelId: json['channel_id'] as String? ?? '',
+      authMode: json['auth_mode'] as String? ?? 'manual_export',
+      connectionStatus: json['connection_status'] as String? ?? 'not_connected',
+      approvalStatus: json['approval_status'] as String? ?? 'draft',
+      publishingMode: json['publishing_mode'] as String? ?? 'manual_export',
+      tokenStatus: json['token_status'] as String? ?? 'none',
+      callbackUrl: json['callback_url'] as String? ?? '',
+      scopes: (json['scopes'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      availableAccounts:
+          (json['available_accounts'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .toList(),
+      notes: json['notes'] as String? ?? '',
+      lastHealthCheckAt: json['last_health_check_at'] as String? ?? '',
+      updatedAt: json['updated_at'] as String? ?? '',
+    );
+  }
+}
+
+class GrowthPublishingRequest {
+  const GrowthPublishingRequest({
+    required this.id,
+    required this.integrationId,
+    required this.derivativeId,
+    required this.provider,
+    required this.title,
+    required this.body,
+    required this.status,
+    required this.approvalNotes,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String integrationId;
+  final String derivativeId;
+  final String provider;
+  final String title;
+  final String body;
+  final String status;
+  final String approvalNotes;
+  final String updatedAt;
+
+  factory GrowthPublishingRequest.fromJson(Map<String, dynamic> json) {
+    return GrowthPublishingRequest(
+      id: json['id'] as String? ?? '',
+      integrationId: json['integration_id'] as String? ?? '',
+      derivativeId: json['derivative_id'] as String? ?? '',
+      provider: json['provider'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      body: json['body'] as String? ?? '',
+      status: json['status'] as String? ?? 'pending_admin_approval',
+      approvalNotes: json['approval_notes'] as String? ?? '',
       updatedAt: json['updated_at'] as String? ?? '',
     );
   }

@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /settings
+Disallow: /questions
+Disallow: /profile
+Disallow: /growth
+Disallow: /medical-diaries
+
+Sitemap: https://mediconverse.web.app/sitemap.xml

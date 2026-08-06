@@ -5,6 +5,7 @@ from time import monotonic
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 try:
     from .models import (
@@ -23,6 +24,17 @@ try:
         ContentShareRequest,
         DoctorInviteCreate,
         DoctorResponseInput,
+        GrowthCampaignCreate,
+        GrowthCampaignUpdate,
+        GrowthContentDerivativeCreate,
+        GrowthEventInput,
+        GrowthIntegrationApprovalUpdate,
+        GrowthIntegrationCreate,
+        GrowthIntegrationOAuthStart,
+        GrowthIntegrationSelectionUpdate,
+        GrowthOpportunityCreate,
+        GrowthPublishingApprovalUpdate,
+        GrowthPublishingRequestCreate,
         NotificationSettingsUpdate,
         OtpRequestInput,
         OtpVerifyInput,
@@ -55,10 +67,24 @@ try:
         delete_user_account,
         invite_doctor,
         create_payment_intent,
+        create_growth_campaign,
+        create_growth_derivative,
+        create_growth_integration,
+        create_growth_opportunity,
+        create_growth_publishing_request,
         create_question,
+        complete_growth_integration_oauth,
         get_app_settings,
         get_notification_settings,
+        growth_overview,
+        ingest_growth_event,
         list_email_campaigns,
+        list_growth_campaigns,
+        list_growth_derivatives,
+        list_growth_integration_catalog,
+        list_growth_integrations,
+        list_growth_opportunities,
+        list_growth_publishing_requests,
         create_title_template,
         get_user_profile,
         list_education,
@@ -83,8 +109,14 @@ try:
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
+        start_growth_integration_oauth,
+        test_growth_integration_connection,
         update_ad_campaign,
         update_blog_article,
+        update_growth_campaign,
+        update_growth_integration_approval,
+        update_growth_integration_selection,
+        update_growth_publishing_request,
         like_blog_article,
         update_app_settings,
         update_communication_preferences,
@@ -111,6 +143,17 @@ except ImportError:
         ContentShareRequest,
         DoctorInviteCreate,
         DoctorResponseInput,
+        GrowthCampaignCreate,
+        GrowthCampaignUpdate,
+        GrowthContentDerivativeCreate,
+        GrowthEventInput,
+        GrowthIntegrationApprovalUpdate,
+        GrowthIntegrationCreate,
+        GrowthIntegrationOAuthStart,
+        GrowthIntegrationSelectionUpdate,
+        GrowthOpportunityCreate,
+        GrowthPublishingApprovalUpdate,
+        GrowthPublishingRequestCreate,
         NotificationSettingsUpdate,
         OtpRequestInput,
         OtpVerifyInput,
@@ -143,10 +186,24 @@ except ImportError:
         delete_user_account,
         invite_doctor,
         create_payment_intent,
+        create_growth_campaign,
+        create_growth_derivative,
+        create_growth_integration,
+        create_growth_opportunity,
+        create_growth_publishing_request,
         create_question,
+        complete_growth_integration_oauth,
         get_app_settings,
         get_notification_settings,
+        growth_overview,
+        ingest_growth_event,
         list_email_campaigns,
+        list_growth_campaigns,
+        list_growth_derivatives,
+        list_growth_integration_catalog,
+        list_growth_integrations,
+        list_growth_opportunities,
+        list_growth_publishing_requests,
         create_title_template,
         get_user_profile,
         list_education,
@@ -171,8 +228,14 @@ except ImportError:
         verify_otp,
         seed_if_needed,
         should_seed_demo_data,
+        start_growth_integration_oauth,
+        test_growth_integration_connection,
         update_ad_campaign,
         update_blog_article,
+        update_growth_campaign,
+        update_growth_integration_approval,
+        update_growth_integration_selection,
+        update_growth_publishing_request,
         like_blog_article,
         update_app_settings,
         update_communication_preferences,
@@ -274,6 +337,148 @@ def admin_share_content(payload: ContentShareRequest) -> ContentShareReport:
 @app.get("/api/admin/email-campaigns")
 def admin_email_campaigns() -> list[dict]:
     return list_email_campaigns()
+
+
+@app.get("/api/admin/growth/overview")
+def admin_growth_overview(actor_id: str) -> dict:
+    return growth_overview(actor_id)
+
+
+@app.get("/api/admin/growth/campaigns")
+def admin_growth_campaigns(actor_id: str) -> list[dict]:
+    return list_growth_campaigns(actor_id)
+
+
+@app.post("/api/admin/growth/campaigns")
+def admin_create_growth_campaign(payload: GrowthCampaignCreate) -> dict:
+    return create_growth_campaign(payload)
+
+
+@app.patch("/api/admin/growth/campaigns/{campaign_id}")
+def admin_update_growth_campaign(campaign_id: str, payload: GrowthCampaignUpdate) -> dict:
+    return update_growth_campaign(campaign_id, payload)
+
+
+@app.get("/api/admin/growth/opportunities")
+def admin_growth_opportunities(actor_id: str) -> list[dict]:
+    return list_growth_opportunities(actor_id)
+
+
+@app.post("/api/admin/growth/opportunities")
+def admin_create_growth_opportunity(payload: GrowthOpportunityCreate) -> dict:
+    return create_growth_opportunity(payload)
+
+
+@app.get("/api/admin/growth/content-derivatives")
+def admin_growth_content_derivatives(actor_id: str, source_article_id: str | None = None) -> list[dict]:
+    return list_growth_derivatives(actor_id, source_article_id)
+
+
+@app.post("/api/admin/growth/content-derivatives")
+def admin_create_growth_derivative(payload: GrowthContentDerivativeCreate) -> dict:
+    return create_growth_derivative(payload)
+
+
+@app.get("/api/admin/growth/integrations/catalog")
+def admin_growth_integration_catalog(actor_id: str) -> list[dict]:
+    return list_growth_integration_catalog(actor_id)
+
+
+@app.get("/api/admin/growth/integrations")
+def admin_growth_integrations(actor_id: str) -> list[dict]:
+    return list_growth_integrations(actor_id)
+
+
+@app.post("/api/admin/growth/integrations")
+def admin_create_growth_integration(payload: GrowthIntegrationCreate) -> dict:
+    return create_growth_integration(payload)
+
+
+@app.post("/api/admin/growth/integrations/{integration_id}/oauth/start")
+def admin_start_growth_integration_oauth(integration_id: str, payload: GrowthIntegrationOAuthStart) -> dict:
+    return start_growth_integration_oauth(integration_id, payload)
+
+
+@app.patch("/api/admin/growth/integrations/{integration_id}/approval")
+def admin_update_growth_integration_approval(integration_id: str, payload: GrowthIntegrationApprovalUpdate) -> dict:
+    return update_growth_integration_approval(integration_id, payload)
+
+
+@app.patch("/api/admin/growth/integrations/{integration_id}/selection")
+def admin_update_growth_integration_selection(integration_id: str, payload: GrowthIntegrationSelectionUpdate) -> dict:
+    return update_growth_integration_selection(integration_id, payload)
+
+
+@app.post("/api/admin/growth/integrations/{integration_id}/test")
+def admin_test_growth_integration_connection(integration_id: str, payload: GrowthIntegrationOAuthStart) -> dict:
+    return test_growth_integration_connection(integration_id, payload.actor_id)
+
+
+@app.get("/api/integrations/{provider}/callback")
+@app.get("/api/growth/oauth/{provider}/callback")
+def growth_integration_oauth_callback(
+    provider: str,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> HTMLResponse:
+    try:
+        result = complete_growth_integration_oauth(provider, state, code, error or error_description)
+        if result.get("status") == "failed":
+            title = "Social account connection failed"
+            detail = f"{provider} was not connected: {result.get('detail', 'OAuth failed')}."
+            status_code = 400
+        else:
+            title = "Social account connected"
+            detail = (
+                f"{provider} is connected. Returning to MedicoHub Growth Studio; "
+                "refresh Integrations, then select or approve the official destination."
+            )
+            status_code = 200
+    except HTTPException as exc:
+        title = "Social account connection failed"
+        detail = str(exc.detail)
+        status_code = exc.status_code
+        result = {"status": "failed", "provider": provider}
+    html = f"""
+    <!doctype html>
+    <html lang=\"en\">
+      <head>
+        <meta charset=\"utf-8\">
+        <title>{title}</title>
+        {"<meta http-equiv=\"refresh\" content=\"3; url=https://mediconverse.web.app\">" if status_code < 400 else ""}
+      </head>
+      <body style=\"font-family: system-ui, sans-serif; margin: 40px; max-width: 760px;\">
+        <h1>{title}</h1>
+        <p>{detail}</p>
+        {"<p>You will be redirected automatically in a few seconds.</p>" if status_code < 400 else ""}
+        <p><a href=\"https://mediconverse.web.app\">Open MedicoHub Connect</a></p>
+        <pre style=\"white-space: pre-wrap; background: #f7f7f7; padding: 12px;\">{result}</pre>
+      </body>
+    </html>
+    """
+    return HTMLResponse(content=html, status_code=status_code)
+
+
+@app.get("/api/admin/growth/publishing-requests")
+def admin_growth_publishing_requests(actor_id: str) -> list[dict]:
+    return list_growth_publishing_requests(actor_id)
+
+
+@app.post("/api/admin/growth/publishing-requests")
+def admin_create_growth_publishing_request(payload: GrowthPublishingRequestCreate) -> dict:
+    return create_growth_publishing_request(payload)
+
+
+@app.patch("/api/admin/growth/publishing-requests/{publish_id}/approval")
+def admin_update_growth_publishing_request(publish_id: str, payload: GrowthPublishingApprovalUpdate) -> dict:
+    return update_growth_publishing_request(publish_id, payload)
+
+
+@app.post("/api/growth/events")
+def growth_event(payload: GrowthEventInput) -> dict:
+    return ingest_growth_event(payload)
 
 
 @app.get("/doctors")

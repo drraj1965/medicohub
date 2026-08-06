@@ -14,6 +14,7 @@ class AppApiService {
   static final String _baseUrl = _resolveBaseUrl();
   static const Duration _requestTimeout = Duration(seconds: 20);
   static const Duration _questionRequestTimeout = Duration(seconds: 30);
+  static const Duration _shareRequestTimeout = Duration(seconds: 90);
   static const String _publicBackendUrl = 'https://medicohub-backend.fly.dev';
 
   String get baseUrl => _baseUrl;
@@ -24,7 +25,7 @@ class AppApiService {
       return configured;
     }
     if (kIsWeb) {
-      return 'http://127.0.0.1:8012';
+      return _publicBackendUrl;
     }
     if (Platform.isAndroid) {
       return kReleaseMode ? _publicBackendUrl : 'http://10.0.2.2:8012';
@@ -70,6 +71,392 @@ class AppApiService {
     _ensureSuccess(response, 'translation usage');
     final decoded = jsonDecode(response.body);
     return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  Future<GrowthOverview> fetchGrowthOverview({required String actorId}) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/overview?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth overview');
+    return GrowthOverview.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<GrowthCampaign>> fetchGrowthCampaigns({
+    required String actorId,
+  }) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/campaigns?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth campaigns');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => GrowthCampaign.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<GrowthCampaign> createGrowthCampaign({
+    required String actorId,
+    required String name,
+    required String objective,
+    required String hypothesis,
+    required String targetAudience,
+    required String valueOffered,
+    required String primaryCta,
+    required String primaryMetric,
+    required List<String> channels,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/growth/campaigns'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'name': name,
+            'objective': objective,
+            'hypothesis': hypothesis,
+            'target_audience': targetAudience,
+            'value_offered': valueOffered,
+            'primary_cta': primaryCta,
+            'primary_metric': primaryMetric,
+            'channels': channels,
+            'minimum_observation_period_days': 14,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'create growth campaign');
+    return GrowthCampaign.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<GrowthOpportunity>> fetchGrowthOpportunities({
+    required String actorId,
+  }) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/opportunities?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth opportunities');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => GrowthOpportunity.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<GrowthDerivative>> fetchGrowthDerivatives({
+    required String actorId,
+    String? sourceArticleId,
+  }) async {
+    final params = <String, String>{
+      'actor_id': actorId,
+      if (sourceArticleId != null && sourceArticleId.isNotEmpty)
+        'source_article_id': sourceArticleId,
+    };
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/admin/growth/content-derivatives')
+            .replace(queryParameters: params))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth derivatives');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => GrowthDerivative.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<GrowthDerivative> createGrowthDerivative({
+    required String actorId,
+    required String sourceArticleId,
+    required String assetType,
+    required String platform,
+    required String title,
+    required String body,
+    String? campaignId,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/growth/content-derivatives'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'source_article_id': sourceArticleId,
+            'asset_type': assetType,
+            'platform': platform,
+            'title': title,
+            'body': body,
+            if (campaignId != null && campaignId.isNotEmpty)
+              'campaign_id': campaignId,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'create growth derivative');
+    return GrowthDerivative.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<List<GrowthIntegrationCatalogItem>> fetchGrowthIntegrationCatalog({
+    required String actorId,
+  }) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/integrations/catalog?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth integration catalog');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) =>
+            GrowthIntegrationCatalogItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<GrowthIntegration>> fetchGrowthIntegrations({
+    required String actorId,
+  }) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/integrations?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth integrations');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) => GrowthIntegration.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<GrowthIntegration> createGrowthIntegration({
+    required String actorId,
+    required String provider,
+    required String displayName,
+    required String authMode,
+    List<String> scopes = const [],
+    String accountHandle = '',
+    String accountUrl = '',
+    String notes = '',
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/growth/integrations'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'provider': provider,
+            'display_name': displayName,
+            'account_handle': accountHandle,
+            'account_url': accountUrl,
+            'auth_mode': authMode,
+            'scopes': scopes,
+            'notes': notes,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'create growth integration');
+    return GrowthIntegration.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<Map<String, dynamic>> startGrowthIntegrationOAuth({
+    required String actorId,
+    required String integrationId,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse(
+              '$_baseUrl/api/admin/growth/integrations/$integrationId/oauth/start'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'actor_id': actorId}),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'start growth OAuth');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<GrowthIntegration> updateGrowthIntegrationApproval({
+    required String actorId,
+    required String integrationId,
+    required String approvalStatus,
+    String notes = '',
+  }) async {
+    final response = await _client
+        .patch(
+          Uri.parse(
+              '$_baseUrl/api/admin/growth/integrations/$integrationId/approval'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'approval_status': approvalStatus,
+            'notes': notes,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'update growth integration approval');
+    return GrowthIntegration.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<GrowthIntegration> updateGrowthIntegrationSelection({
+    required String actorId,
+    required String integrationId,
+    String externalAccountId = '',
+    String externalAccountName = '',
+    String externalAccountType = '',
+    String pageId = '',
+    String instagramBusinessAccountId = '',
+    String channelId = '',
+    String notes = '',
+  }) async {
+    final response = await _client
+        .patch(
+          Uri.parse(
+              '$_baseUrl/api/admin/growth/integrations/$integrationId/selection'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'external_account_id': externalAccountId,
+            'external_account_name': externalAccountName,
+            'external_account_type': externalAccountType,
+            'page_id': pageId,
+            'instagram_business_account_id': instagramBusinessAccountId,
+            'channel_id': channelId,
+            'notes': notes,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'update growth integration selection');
+    return GrowthIntegration.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<Map<String, dynamic>> testGrowthIntegration({
+    required String actorId,
+    required String integrationId,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse(
+              '$_baseUrl/api/admin/growth/integrations/$integrationId/test'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'actor_id': actorId}),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'test growth integration');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<List<GrowthPublishingRequest>> fetchGrowthPublishingRequests({
+    required String actorId,
+  }) async {
+    final response = await _client
+        .get(Uri.parse(
+            '$_baseUrl/api/admin/growth/publishing-requests?actor_id=${Uri.encodeQueryComponent(actorId)}'))
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth publishing requests');
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((item) =>
+            GrowthPublishingRequest.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<GrowthPublishingRequest> createGrowthPublishingRequest({
+    required String actorId,
+    required String integrationId,
+    required String provider,
+    required String title,
+    required String body,
+    String derivativeId = '',
+    String campaignId = '',
+    String targetUrl = '',
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/admin/growth/publishing-requests'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'integration_id': integrationId,
+            'provider': provider,
+            'title': title,
+            'body': body,
+            if (derivativeId.isNotEmpty) 'derivative_id': derivativeId,
+            if (campaignId.isNotEmpty) 'campaign_id': campaignId,
+            'target_url': targetUrl,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'create growth publishing request');
+    return GrowthPublishingRequest.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<GrowthPublishingRequest> updateGrowthPublishingRequest({
+    required String actorId,
+    required String publishId,
+    required String status,
+    String notes = '',
+    String externalPostId = '',
+  }) async {
+    final response = await _client
+        .patch(
+          Uri.parse(
+              '$_baseUrl/api/admin/growth/publishing-requests/$publishId/approval'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'status': status,
+            'notes': notes,
+            'external_post_id': externalPostId,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'update growth publishing request');
+    return GrowthPublishingRequest.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> recordGrowthEvent({
+    required String eventName,
+    String? anonymousId,
+    String? userId,
+    String? sessionId,
+    String? campaignId,
+    String? source,
+    String? medium,
+    String? platform,
+    String? contentId,
+    String? language,
+    String? region,
+    Map<String, Object?> metadata = const {},
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/growth/events'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'event_name': eventName,
+            'anonymous_id': anonymousId,
+            'user_id': userId,
+            'session_id': sessionId,
+            'campaign_id': campaignId,
+            'source': source,
+            'medium': medium,
+            'platform': platform,
+            'content_id': contentId,
+            'language': language,
+            'region': region,
+            'metadata': metadata,
+          }),
+        )
+        .timeout(_requestTimeout);
+    _ensureSuccess(response, 'growth event');
   }
 
   Future<void> waitUntilReady({
@@ -176,7 +563,7 @@ class AppApiService {
             'send_email': true,
           }),
         )
-        .timeout(_questionRequestTimeout);
+        .timeout(_shareRequestTimeout);
     _ensureSuccess(response, 'share content');
     return ContentShareReport.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -776,26 +1163,29 @@ class AppApiService {
     List<String> sectionOrder = const [],
     Map<String, BlogArticleSection> sections = const {},
   }) async {
-    final response = await _client.post(
-      Uri.parse('$_baseUrl/blog/articles'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'author_id': authorId,
-        'title': title,
-        'summary': summary,
-        'body': body,
-        'category': category,
-        'language': language,
-        'source_url': sourceUrl,
-        'image_url': imageUrl,
-        'youtube_url': youtubeUrl,
-        'youtube_video_id': youtubeVideoId,
-        'body_format': 'markdown',
-        'default_language': 'en',
-        'section_order': sectionOrder,
-        'sections': sections.map((key, value) => MapEntry(key, value.toJson())),
-      }),
-    );
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl/blog/articles'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'author_id': authorId,
+            'title': title,
+            'summary': summary,
+            'body': body,
+            'category': category,
+            'language': language,
+            'source_url': sourceUrl,
+            'image_url': imageUrl,
+            'youtube_url': youtubeUrl,
+            'youtube_video_id': youtubeVideoId,
+            'body_format': 'markdown',
+            'default_language': 'en',
+            'section_order': sectionOrder,
+            'sections':
+                sections.map((key, value) => MapEntry(key, value.toJson())),
+          }),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'create blog article');
     return BlogArticle.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -817,26 +1207,29 @@ class AppApiService {
     List<String> sectionOrder = const [],
     Map<String, BlogArticleSection> sections = const {},
   }) async {
-    final response = await _client.patch(
-      Uri.parse('$_baseUrl/blog/articles/$articleId'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'actor_id': actorId,
-        'title': title,
-        'summary': summary,
-        'body': body,
-        'category': category,
-        'language': language,
-        'source_url': sourceUrl,
-        'image_url': imageUrl,
-        'youtube_url': youtubeUrl,
-        'youtube_video_id': youtubeVideoId,
-        'body_format': 'markdown',
-        'default_language': 'en',
-        'section_order': sectionOrder,
-        'sections': sections.map((key, value) => MapEntry(key, value.toJson())),
-      }),
-    );
+    final response = await _client
+        .patch(
+          Uri.parse('$_baseUrl/blog/articles/$articleId'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'actor_id': actorId,
+            'title': title,
+            'summary': summary,
+            'body': body,
+            'category': category,
+            'language': language,
+            'source_url': sourceUrl,
+            'image_url': imageUrl,
+            'youtube_url': youtubeUrl,
+            'youtube_video_id': youtubeVideoId,
+            'body_format': 'markdown',
+            'default_language': 'en',
+            'section_order': sectionOrder,
+            'sections':
+                sections.map((key, value) => MapEntry(key, value.toJson())),
+          }),
+        )
+        .timeout(_requestTimeout);
     _ensureSuccess(response, 'update blog article');
     return BlogArticle.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,

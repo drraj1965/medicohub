@@ -15,3 +15,5 @@ frontend_flutter/ios/Runner/GoogleService-Info.plist
 *.log
 artifacts/
 backend_data/
+.env.oauth.local
+.env*.local
